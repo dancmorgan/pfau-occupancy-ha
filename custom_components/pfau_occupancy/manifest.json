@@ -1,0 +1,12 @@
+{
+  "domain": "pfau_occupancy",
+  "name": "Planet Fitness AU Occupancy",
+  "codeowners": ["@dancmorgan"],
+  "config_flow": true,
+  "documentation": "https://github.com/dancmorgan/pfau-occupancy-ha",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/dancmorgan/pfau-occupancy-ha/issues",
+  "requirements": ["pfau-occupancy>=0.1.0"],
+  "version": "0.1.0"
+}

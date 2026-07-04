@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Enter your Planet Fitness Australia member portal credentials.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Planet Fitness",
+        "description": "Your Planet Fitness session for {email} has expired. Re-enter your password.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password.",
+      "cannot_connect": "Failed to connect to the Planet Fitness portal.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "How often to poll the Planet Fitness portal for occupancy.",
+        "data": {
+          "scan_interval": "Scan interval (minutes)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "occupancy": {
+        "name": "Occupancy"
+      }
+    }
+  }
+}
