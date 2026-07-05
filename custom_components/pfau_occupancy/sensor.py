@@ -3,13 +3,11 @@ from __future__ import annotations
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from pfau_occupancy import Club
 
-from .const import DOMAIN
 from .coordinator import PlanetFitnessConfigEntry, PlanetFitnessCoordinator
 
 
@@ -42,10 +40,12 @@ class PlanetFitnessClubSensor(CoordinatorEntity[PlanetFitnessCoordinator], Senso
     Identity is the slugified club name (the API exposes no club ID). If a club
     disappears from a poll response (renamed, or temporarily dropped), `_club`
     resolves to None and `available` goes False rather than removing the entity.
+
+    Deliberately not attached to a Device: a device per club would trigger HA's
+    bulk "name and assign area" onboarding prompt for every club on first setup,
+    which isn't wanted here. These are plain, ungrouped sensor entities.
     """
 
-    _attr_has_entity_name = True
-    _attr_translation_key = "occupancy"
     _attr_native_unit_of_measurement = "people"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:account-group"
@@ -54,12 +54,7 @@ class PlanetFitnessClubSensor(CoordinatorEntity[PlanetFitnessCoordinator], Senso
         super().__init__(coordinator)
         self._club_key = club_key
         self._attr_unique_id = f"{club_key}_occupancy"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, club_key)},
-            name=coordinator.data[club_key].name,
-            manufacturer="Planet Fitness",
-            model="Club",
-        )
+        self._attr_name = f"{coordinator.data[club_key].name} Occupancy"
 
     @property
     def _club(self) -> Club | None:

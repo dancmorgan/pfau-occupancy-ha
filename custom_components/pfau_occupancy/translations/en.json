@@ -35,12 +35,5 @@
         }
       }
     }
-  },
-  "entity": {
-    "sensor": {
-      "occupancy": {
-        "name": "Occupancy"
-      }
-    }
   }
 }
