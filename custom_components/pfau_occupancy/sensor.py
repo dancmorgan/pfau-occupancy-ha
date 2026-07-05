@@ -54,7 +54,7 @@ class PlanetFitnessClubSensor(CoordinatorEntity[PlanetFitnessCoordinator], Senso
         super().__init__(coordinator)
         self._club_key = club_key
         self._attr_unique_id = f"{club_key}_occupancy"
-        self._attr_name = f"{coordinator.data[club_key].name} Occupancy"
+        self._attr_name = f"{coordinator.data[club_key].name.title()} Occupancy"
 
     @property
     def _club(self) -> Club | None:
