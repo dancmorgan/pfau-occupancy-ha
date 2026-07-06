@@ -14,6 +14,11 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, CONF_SCAN_INTERVAL
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+)
 
 from pfau_occupancy import (
     PlanetFitnessAuthError,
@@ -77,8 +82,15 @@ class PlanetFitnessConfigFlow(ConfigFlow, domain=DOMAIN):
                     title=user_input[CONF_EMAIL], data=user_input
                 )
 
+        # Re-showing the form with the previous input as suggested values keeps
+        # the email filled in after a failed attempt (passwords are never
+        # round-tripped back into the form by HA).
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="user",
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_USER_DATA_SCHEMA, user_input
+            ),
+            errors=errors,
         )
 
     async def async_step_reauth(
@@ -131,12 +143,24 @@ class PlanetFitnessOptionsFlow(OptionsFlow):
         current = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MINUTES
         )
+        # Required (not Optional) so the frontend doesn't render an enable
+        # checkbox next to the field; BOX mode gives a plain number input
+        # rather than a slider.
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_SCAN_INTERVAL, default=current): vol.All(
-                        vol.Coerce(int), vol.Range(min=1, max=60)
+                    vol.Required(CONF_SCAN_INTERVAL, default=current): vol.All(
+                        NumberSelector(
+                            NumberSelectorConfig(
+                                min=1,
+                                max=60,
+                                step=1,
+                                mode=NumberSelectorMode.BOX,
+                                unit_of_measurement="minutes",
+                            )
+                        ),
+                        vol.Coerce(int),
                     ),
                 }
             ),

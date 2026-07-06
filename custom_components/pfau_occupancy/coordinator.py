@@ -31,9 +31,10 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
     config_entry: PlanetFitnessConfigEntry
 
     def __init__(self, hass: HomeAssistant, entry: PlanetFitnessConfigEntry) -> None:
-        scan_minutes = entry.options.get(
-            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MINUTES
+        scan_minutes = int(
+            entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MINUTES)
         )
+        _LOGGER.debug("Polling every %d minutes", scan_minutes)
         super().__init__(
             hass,
             _LOGGER,
@@ -51,7 +52,10 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
         try:
             clubs = await self.client.async_get_clubs()
         except PlanetFitnessAuthError as err:
+            _LOGGER.debug("Update failed with auth error: %s", err)
             raise ConfigEntryAuthFailed(str(err)) from err
         except PlanetFitnessConnectionError as err:
+            _LOGGER.debug("Update failed with connection error: %s", err)
             raise UpdateFailed(str(err)) from err
+        _LOGGER.debug("Update fetched %d clubs", len(clubs))
         return {club.key: club for club in clubs}
