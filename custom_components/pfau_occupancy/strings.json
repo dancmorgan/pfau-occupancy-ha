@@ -29,11 +29,16 @@
   "options": {
     "step": {
       "init": {
-        "description": "How often to poll the Planet Fitness portal for occupancy.",
+        "description": "Polling and occupancy-model settings. The counter window is the portal's fixed removal timer (how long a member scan stays in the reported count); real dwell is the assumed average time a member actually spends in the club.",
         "data": {
-          "scan_interval": "Scan interval (minutes)"
+          "scan_interval": "Scan interval (minutes)",
+          "counter_window_minutes": "Counter window (minutes)",
+          "real_dwell_minutes": "Real dwell (minutes)"
         }
       }
+    },
+    "error": {
+      "dwell_exceeds_window": "Real dwell cannot be longer than the counter window."
     }
   }
 }

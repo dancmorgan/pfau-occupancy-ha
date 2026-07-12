@@ -26,7 +26,14 @@ from pfau_occupancy import (
     PlanetFitnessConnectionError,
 )
 
-from .const import DEFAULT_SCAN_INTERVAL_MINUTES, DOMAIN
+from .const import (
+    CONF_COUNTER_WINDOW,
+    CONF_REAL_DWELL,
+    DEFAULT_COUNTER_WINDOW_MINUTES,
+    DEFAULT_REAL_DWELL_MINUTES,
+    DEFAULT_SCAN_INTERVAL_MINUTES,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -130,38 +137,63 @@ class PlanetFitnessConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
 
+def _minutes_box(min_value: int, max_value: int) -> vol.All:
+    """A plain number-box selector for a minutes field.
+
+    Required + BOX mode so the frontend renders neither an enable checkbox
+    nor a slider.
+    """
+    return vol.All(
+        NumberSelector(
+            NumberSelectorConfig(
+                min=min_value,
+                max=max_value,
+                step=1,
+                mode=NumberSelectorMode.BOX,
+                unit_of_measurement="minutes",
+            )
+        ),
+        vol.Coerce(int),
+    )
+
+
 class PlanetFitnessOptionsFlow(OptionsFlow):
-    """Options flow letting the poll interval be tuned after setup."""
+    """Options flow: poll interval plus the occupancy-model constants."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Ask for the scan interval, in minutes."""
+        """Ask for the scan interval and estimator windows, in minutes."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            if user_input[CONF_REAL_DWELL] > user_input[CONF_COUNTER_WINDOW]:
+                errors["base"] = "dwell_exceeds_window"
+            else:
+                return self.async_create_entry(data=user_input)
 
-        current = self.config_entry.options.get(
-            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MINUTES
+        options = self.config_entry.options
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_SCAN_INTERVAL,
+                    default=options.get(
+                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MINUTES
+                    ),
+                ): _minutes_box(1, 60),
+                vol.Required(
+                    CONF_COUNTER_WINDOW,
+                    default=options.get(
+                        CONF_COUNTER_WINDOW, DEFAULT_COUNTER_WINDOW_MINUTES
+                    ),
+                ): _minutes_box(5, 720),
+                vol.Required(
+                    CONF_REAL_DWELL,
+                    default=options.get(CONF_REAL_DWELL, DEFAULT_REAL_DWELL_MINUTES),
+                ): _minutes_box(5, 720),
+            }
         )
-        # Required (not Optional) so the frontend doesn't render an enable
-        # checkbox next to the field; BOX mode gives a plain number input
-        # rather than a slider.
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_SCAN_INTERVAL, default=current): vol.All(
-                        NumberSelector(
-                            NumberSelectorConfig(
-                                min=1,
-                                max=60,
-                                step=1,
-                                mode=NumberSelectorMode.BOX,
-                                unit_of_measurement="minutes",
-                            )
-                        ),
-                        vol.Coerce(int),
-                    ),
-                }
-            ),
+            data_schema=self.add_suggested_values_to_schema(schema, user_input),
+            errors=errors,
         )

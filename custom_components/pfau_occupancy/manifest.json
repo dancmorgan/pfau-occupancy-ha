@@ -8,5 +8,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/dancmorgan/pfau-occupancy-ha/issues",
   "requirements": ["pfau-occupancy>=0.1.1"],
-  "version": "0.2.0"
+  "version": "0.3.0"
 }

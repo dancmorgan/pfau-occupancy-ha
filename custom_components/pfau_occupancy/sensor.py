@@ -9,6 +9,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from pfau_occupancy import Club
 
 from .coordinator import PlanetFitnessConfigEntry, PlanetFitnessCoordinator
+from .estimator import ClubEstimate
 
 
 async def async_setup_entry(
@@ -27,15 +28,20 @@ async def async_setup_entry(
             return
         known_keys.update(new_keys)
         async_add_entities(
-            PlanetFitnessClubSensor(coordinator, key) for key in new_keys
+            [
+                *(PlanetFitnessReportedSensor(coordinator, key) for key in new_keys),
+                *(PlanetFitnessRealSensor(coordinator, key) for key in new_keys),
+            ]
         )
 
     _add_new_clubs()
     entry.async_on_unload(coordinator.async_add_listener(_add_new_clubs))
 
 
-class PlanetFitnessClubSensor(CoordinatorEntity[PlanetFitnessCoordinator], SensorEntity):
-    """A single club's current occupancy.
+class PlanetFitnessClubSensorBase(
+    CoordinatorEntity[PlanetFitnessCoordinator], SensorEntity
+):
+    """Shared behavior for the per-club sensors.
 
     Identity is the slugified club name (the API exposes no club ID). If a club
     disappears from a poll response (renamed, or temporarily dropped), `_club`
@@ -53,8 +59,6 @@ class PlanetFitnessClubSensor(CoordinatorEntity[PlanetFitnessCoordinator], Senso
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator)
         self._club_key = club_key
-        self._attr_unique_id = f"{club_key}_occupancy"
-        self._attr_name = f"{coordinator.data[club_key].name.title()} Occupancy"
 
     @property
     def _club(self) -> Club | None:
@@ -63,6 +67,21 @@ class PlanetFitnessClubSensor(CoordinatorEntity[PlanetFitnessCoordinator], Senso
     @property
     def available(self) -> bool:
         return super().available and self._club is not None
+
+
+class PlanetFitnessReportedSensor(PlanetFitnessClubSensorBase):
+    """The portal's raw counter, exposed verbatim.
+
+    Not a true headcount: the portal adds 1 per member scan and removes it on
+    a fixed timer (the counter window), so this is a trailing sum of arrivals.
+    """
+
+    def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
+        super().__init__(coordinator, club_key)
+        self._attr_unique_id = f"{club_key}_occupancy"
+        self._attr_name = (
+            f"{coordinator.data[club_key].name.title()} Reported Occupancy"
+        )
 
     @property
     def native_value(self) -> int | None:
@@ -78,4 +97,44 @@ class PlanetFitnessClubSensor(CoordinatorEntity[PlanetFitnessCoordinator], Senso
             "address": club.address,
             "limit": club.limit,
             "percent_full": club.percent_full,
+        }
+
+
+class PlanetFitnessRealSensor(PlanetFitnessClubSensorBase):
+    """Estimated real occupancy, derived from the reported counter.
+
+    The coordinator reconstructs the arrival flow the counter encodes and
+    re-sums it over the assumed real dwell window (see estimator.py). The
+    warming_up attribute is True until a full counter window of real polls has
+    replaced the seeded history, during which the estimate is rough.
+    """
+
+    def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
+        super().__init__(coordinator, club_key)
+        self._attr_unique_id = f"{club_key}_estimated"
+        self._attr_name = f"{coordinator.data[club_key].name.title()} Real Occupancy"
+
+    @property
+    def _estimate(self) -> ClubEstimate | None:
+        return self.coordinator.estimates.get(self._club_key)
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._estimate is not None
+
+    @property
+    def native_value(self) -> int | None:
+        estimate = self._estimate
+        return estimate.estimated_occupancy if estimate else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        estimate = self._estimate
+        if estimate is None:
+            return {}
+        return {
+            "raw_count": estimate.raw_count,
+            "real_dwell_minutes": self.coordinator.real_dwell_minutes,
+            "counter_window_minutes": self.coordinator.counter_window_minutes,
+            "warming_up": estimate.warming_up,
         }
