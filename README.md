@@ -21,7 +21,7 @@ Occupancy". Enter your Planet Fitness Australia member portal email and
 password.
 
 Once set up, the integration's Options let you tune the polling interval
-(default 5 minutes) and the occupancy-model settings described below.
+(default 5 minutes) and the occupancy reduction percentage described below.
 
 ## Reported vs Real occupancy
 
@@ -39,28 +39,25 @@ hour. That means the reported number effectively counts everyone who arrived
 in the last 2 hours, including plenty of people who have already left. At busy
 times it can roughly **double** the real crowd.
 
-**Real Occupancy** corrects for this. Because the counter's removal timer is
-fixed and known, the integration can work backwards from how the reported
-number changes between polls to reconstruct how many people *arrived* in each
-time slot. It then re-counts only the arrivals from the last hour — the ones
-most likely still inside. In short: same data, but counted over a realistic
-visit length instead of the portal's inflated 2-hour window.
+**Real Occupancy** corrects for this. Because the portal's own removal timer
+is baked into the same signal as new check-ins, there's no reliable way to
+work backwards from the reported number and separate genuine new arrivals from
+the portal's own decay — any attempt to reconstruct arrivals that way gets
+poisoned by check-in noise. So instead, the Real Occupancy sensor applies a
+flat percentage reduction to the reported count (default 33%, i.e. `real =
+reported × 0.67`).
 
 Why it's important: if you're using these sensors to decide when to go, the
 reported number will tell you the gym is busier than it really is. The Real
-Occupancy sensor is the one that answers "how many people are in there right
-now?"
+Occupancy sensor is the one that gives a more realistic read on how many
+people are in there right now.
 
 A few practical notes:
 
-- The Real sensor needs history to work from. After Home Assistant restarts,
-  it has a `warming_up` attribute set to `true` for about 2 hours while it
-  rebuilds; during that time the estimate is rough (it starts at roughly half
-  the reported value and refines from there).
-- Both the 2-hour counter window and the 1-hour assumed visit length are
-  adjustable in the integration's Options if your club behaves differently.
-- It's an estimate, not a turnstile. It knows when people arrived, not when
-  each individual left.
+- The reduction percentage is adjustable in the integration's Options if your
+  club behaves differently.
+- It's a flat correction, not a turnstile count — it doesn't know arrival or
+  departure times, just a rough average.
 
 ## What you get
 

@@ -103,10 +103,8 @@ class PlanetFitnessReportedSensor(PlanetFitnessClubSensorBase):
 class PlanetFitnessRealSensor(PlanetFitnessClubSensorBase):
     """Estimated real occupancy, derived from the reported counter.
 
-    The coordinator reconstructs the arrival flow the counter encodes and
-    re-sums it over the assumed real dwell window (see estimator.py). The
-    warming_up attribute is True until a full counter window of real polls has
-    replaced the seeded history, during which the estimate is rough.
+    The coordinator applies a flat percentage reduction to the portal's
+    reported count (see estimator.py for why).
     """
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
@@ -134,7 +132,5 @@ class PlanetFitnessRealSensor(PlanetFitnessClubSensorBase):
             return {}
         return {
             "raw_count": estimate.raw_count,
-            "real_dwell_minutes": self.coordinator.real_dwell_minutes,
-            "counter_window_minutes": self.coordinator.counter_window_minutes,
-            "warming_up": estimate.warming_up,
+            "reduction_percent": self.coordinator.reduction_percent,
         }

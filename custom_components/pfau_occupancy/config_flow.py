@@ -27,10 +27,8 @@ from pfau_occupancy import (
 )
 
 from .const import (
-    CONF_COUNTER_WINDOW,
-    CONF_REAL_DWELL,
-    DEFAULT_COUNTER_WINDOW_MINUTES,
-    DEFAULT_REAL_DWELL_MINUTES,
+    CONF_REDUCTION_PERCENT,
+    DEFAULT_REDUCTION_PERCENT,
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
 )
@@ -157,19 +155,31 @@ def _minutes_box(min_value: int, max_value: int) -> vol.All:
     )
 
 
+def _percent_box(min_value: int, max_value: int) -> vol.All:
+    """A plain number-box selector for a percentage field."""
+    return vol.All(
+        NumberSelector(
+            NumberSelectorConfig(
+                min=min_value,
+                max=max_value,
+                step=1,
+                mode=NumberSelectorMode.BOX,
+                unit_of_measurement="%",
+            )
+        ),
+        vol.Coerce(int),
+    )
+
+
 class PlanetFitnessOptionsFlow(OptionsFlow):
-    """Options flow: poll interval plus the occupancy-model constants."""
+    """Options flow: poll interval plus the occupancy reduction percentage."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Ask for the scan interval and estimator windows, in minutes."""
-        errors: dict[str, str] = {}
+        """Ask for the scan interval and the reduction percentage."""
         if user_input is not None:
-            if user_input[CONF_REAL_DWELL] > user_input[CONF_COUNTER_WINDOW]:
-                errors["base"] = "dwell_exceeds_window"
-            else:
-                return self.async_create_entry(data=user_input)
+            return self.async_create_entry(data=user_input)
 
         options = self.config_entry.options
         schema = vol.Schema(
@@ -181,19 +191,14 @@ class PlanetFitnessOptionsFlow(OptionsFlow):
                     ),
                 ): _minutes_box(1, 60),
                 vol.Required(
-                    CONF_COUNTER_WINDOW,
+                    CONF_REDUCTION_PERCENT,
                     default=options.get(
-                        CONF_COUNTER_WINDOW, DEFAULT_COUNTER_WINDOW_MINUTES
+                        CONF_REDUCTION_PERCENT, DEFAULT_REDUCTION_PERCENT
                     ),
-                ): _minutes_box(5, 720),
-                vol.Required(
-                    CONF_REAL_DWELL,
-                    default=options.get(CONF_REAL_DWELL, DEFAULT_REAL_DWELL_MINUTES),
-                ): _minutes_box(5, 720),
+                ): _percent_box(0, 90),
             }
         )
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(schema, user_input),
-            errors=errors,
         )
