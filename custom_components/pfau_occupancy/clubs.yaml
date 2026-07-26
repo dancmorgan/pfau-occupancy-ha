@@ -1,0 +1,579 @@
+# Per-club facts that the Planet Fitness portal does not expose.
+#
+# The occupancy endpoint returns only a club's name, address, current count
+# and capacity limit. Floor area and staffed hours have to come from
+# somewhere, so until there's an API for them they live here and are
+# maintained by hand.
+#
+# ---------------------------------------------------------------------------
+# Finding a club's key
+# ---------------------------------------------------------------------------
+# Keys are the club's slugified name: lowercased, accents stripped, every run
+# of non-alphanumeric characters collapsed to a single underscore. It is the
+# same slug that appears in the entity IDs, so the quickest way to find it is
+# to look at an existing sensor: `sensor.morayfield_reported_occupancy` means
+# the key is `morayfield`.
+#
+# Turn on debug logging for the integration and it will also log, once per
+# poll, which discovered clubs have no entry here.
+#
+# ---------------------------------------------------------------------------
+# Fields (all optional)
+# ---------------------------------------------------------------------------
+#   name      Free text, for your benefit when reading this file. Entity names
+#             always come from the API, not from here.
+#   area_sqm  Usable gym floor area in square metres. Drives the Busyness and
+#             Density sensors. Use the area members actually train in — count
+#             the weights floor, cardio floor and studios, but not offices,
+#             change rooms or car parks, or crowding will read low.
+#   timezone  IANA name, e.g. Australia/Brisbane. Defaults to Home Assistant's
+#             own timezone, so only set it for clubs in a different state.
+#   open      Weekly opening hours. Omit entirely for a 24/7 club (the usual
+#             case) — omitted means always open, not never open.
+#   staffed   Weekly staffed hours. Omit for a club that is never staffed.
+#   busy      Override the integration's busy threshold, in people per 16
+#   crowded   square metres, for this club only. Set both or neither.
+#
+# Day keys are mon/tue/wed/thu/fri/sat/sun plus the shorthands `daily`,
+# `weekdays` (mon-fri) and `weekends` (sat-sun). Later keys do not replace
+# earlier ones — `daily` followed by `sat` gives Saturday both sets of hours —
+# so list each day only once.
+#
+# Times are "HH:MM-HH:MM" on a 24-hour clock. Give one range or a list of
+# ranges per day. Use "24:00" for end-of-day; a range whose end is at or
+# before its start is read as running past midnight, so "22:00-02:00" ends at
+# 2am the following morning.
+#
+# ---------------------------------------------------------------------------
+# Example (delete or replace — these numbers are placeholders, not real data)
+# ---------------------------------------------------------------------------
+# clubs:
+#   morayfield:
+#     name: Morayfield
+#     area_sqm: 1200
+#     timezone: Australia/Brisbane
+#     # No `open:` key — open 24/7.
+#     staffed:
+#       weekdays:
+#         - 09:00-13:00
+#         - 15:00-19:00
+#       sat: 09:00-13:00
+#       # No `sun:` key — never staffed on Sundays.
+#
+#   some_smaller_club:
+#     name: Some Smaller Club
+#     area_sqm: 650
+#     open:
+#       weekdays: 05:00-22:00
+#       weekends: 07:00-18:00
+#     staffed:
+#       weekdays: 09:00-17:00
+#     # This one is cramped; call it crowded sooner than the global default.
+#     busy: 0.96
+#     crowded: 1.76
+#
+# ---------------------------------------------------------------------------
+# Seeded skeleton — SCRAPED DATA, SPOT-CHECK BEFORE TRUSTING
+# ---------------------------------------------------------------------------
+# Keys and names were pulled from the club list at
+# https://planetfitnessaustralia.com.au/sitemap.xml (the /gyms/<slug>-<state>/
+# pages); `timezone` from the state in that slug. `area_sqm` is each club's
+# "Huge Floor Space" figure quoted on its own page (all clubs are open 24/7,
+# so no `open:` key is set anywhere below). `staffed` is the "STAFFED HOURS"
+# text that appeared identically on every club page checked:
+# 6am-9pm Mon-Thu, 6am-8pm Fri, 9am-5pm Sat, 9am-4pm Sun.
+#
+# This was pulled from marketing copy, not a structured API, so treat it as a
+# first draft: four clubs had no floor-space figure on their page (left
+# unset below rather than guessed), and Tuggerah's page had no staffed-hours
+# section at all (only a one-off holiday notice), so its `staffed:` key is
+# also left unset — confirm both by phone/in person before relying on them.
+
+clubs:
+  armstrong_creek:
+    name: Armstrong Creek
+    area_sqm: 1834
+    timezone: Australia/Melbourne
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  bankstown:
+    name: Bankstown
+    area_sqm: 1795
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  bethania:
+    name: Bethania
+    area_sqm: 1800
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  broadmeadows:
+    name: Broadmeadows
+    # No floor-space figure was published on this club's page.
+    timezone: Australia/Melbourne
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  caboolture:
+    name: Caboolture
+    area_sqm: 1500
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  campbelltown:
+    name: Campbelltown
+    area_sqm: 1983
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  chermside:
+    name: Chermside
+    area_sqm: 2107
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  corio:
+    name: Corio
+    area_sqm: 2107
+    timezone: Australia/Melbourne
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  craigieburn:
+    name: Craigieburn
+    area_sqm: 1800
+    timezone: Australia/Melbourne
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  delacombe:
+    name: Delacombe
+    area_sqm: 1881
+    timezone: Australia/Melbourne
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  epping:
+    name: Epping
+    area_sqm: 1986
+    timezone: Australia/Melbourne
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  fountain_gate:
+    name: Fountain Gate
+    # No floor-space figure was published on this club's page.
+    timezone: Australia/Melbourne
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  gosford:
+    name: Gosford
+    area_sqm: 1842
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  hervey_bay:
+    name: Hervey Bay
+    area_sqm: 1949
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  hornsby:
+    name: Hornsby
+    area_sqm: 1801
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  lake_haven:
+    name: Lake Haven
+    area_sqm: 1949
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  mackay:
+    name: Mackay
+    area_sqm: 1531
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  morayfield:
+    name: Morayfield
+    area_sqm: 1973
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  mount_druitt:
+    name: Mount Druitt
+    area_sqm: 1200
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  mundingburra:
+    name: Mundingburra
+    area_sqm: 1901
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  noarlunga:
+    name: Noarlunga
+    # No floor-space figure was published on this club's page.
+    timezone: Australia/Adelaide
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  oak_flats:
+    name: Oak Flats
+    area_sqm: 1901
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  oxley:
+    name: Oxley
+    # No floor-space figure was published on this club's page.
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  penrith:
+    name: Penrith
+    area_sqm: 1771
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  prospect:
+    name: Prospect
+    area_sqm: 1273
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  rothwell:
+    name: Rothwell
+    area_sqm: 1865
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  seaford:
+    name: Seaford
+    area_sqm: 1800
+    timezone: Australia/Melbourne
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  shepparton:
+    name: Shepparton
+    area_sqm: 1791
+    timezone: Australia/Melbourne
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  southport:
+    name: Southport
+    area_sqm: 2093
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  springwood:
+    name: Springwood
+    area_sqm: 1788
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  sydney_auburn:
+    name: Sydney Auburn
+    area_sqm: 1856
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  sydney_casula:
+    name: Sydney Casula
+    area_sqm: 2449
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  tamworth:
+    name: Tamworth
+    area_sqm: 2100
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  thuringowa:
+    name: Thuringowa
+    area_sqm: 1980
+    timezone: Australia/Brisbane
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  tuggerah:
+    name: Tuggerah
+    area_sqm: 1592
+    timezone: Australia/Sydney
+    # This club's page had no "STAFFED HOURS" section (only a one-off
+    # holiday notice), so no `staffed:` key is set — confirm locally.
+
+  tuggeranong:
+    name: Tuggeranong
+    area_sqm: 1766
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  wagga_wagga:
+    name: Wagga Wagga
+    area_sqm: 1670
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00
+
+  warrawong:
+    name: Warrawong
+    area_sqm: 1554
+    timezone: Australia/Sydney
+    staffed:
+      mon: 06:00-21:00
+      tue: 06:00-21:00
+      wed: 06:00-21:00
+      thu: 06:00-21:00
+      fri: 06:00-20:00
+      sat: 09:00-17:00
+      sun: 09:00-16:00

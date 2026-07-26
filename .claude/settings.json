@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(py -3.12 -m pip --version)",
+      "Bash(pip install *)",
+      "Bash(python3 -)",
+      "Bash(python3 -c ' *)",
+      "Bash(python -c ' *)",
+      "Bash(python3 -c \"import pfau_occupancy, os; print\\(os.path.dirname\\(pfau_occupancy.__file__\\)\\)\")"
+    ]
+  }
+}

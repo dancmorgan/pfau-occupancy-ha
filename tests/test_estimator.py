@@ -5,24 +5,9 @@ pytest: `pytest tests/` from the repo root.
 """
 from __future__ import annotations
 
-import importlib.util
-import sys
-from pathlib import Path
+from conftest import load_module
 
-# Load estimator.py directly by path: importing it via the package would pull
-# in custom_components/pfau_occupancy/__init__.py, which imports Home
-# Assistant — unavailable (and unwanted) in these pure unit tests.
-_spec = importlib.util.spec_from_file_location(
-    "estimator",
-    Path(__file__).parent.parent
-    / "custom_components"
-    / "pfau_occupancy"
-    / "estimator.py",
-)
-_module = importlib.util.module_from_spec(_spec)
-sys.modules[_spec.name] = _module  # dataclass decorator needs this at exec time
-_spec.loader.exec_module(_module)
-estimate_occupancy = _module.estimate_occupancy
+estimate_occupancy = load_module("estimator").estimate_occupancy
 
 
 def test_default_reduction() -> None:
