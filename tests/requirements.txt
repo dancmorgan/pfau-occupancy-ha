@@ -1,0 +1,7 @@
+# Enough to run the Home-Assistant-free unit tests: `pytest tests/`.
+# PyYAML and tzdata are Home Assistant core dependencies, so they're always
+# present at runtime; they're listed here only for a bare test environment.
+# (tzdata is what gives zoneinfo an IANA database on Windows, which has none.)
+pytest
+PyYAML
+tzdata

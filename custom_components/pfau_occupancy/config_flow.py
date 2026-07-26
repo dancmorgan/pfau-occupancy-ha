@@ -27,7 +27,11 @@ from pfau_occupancy import (
 )
 
 from .const import (
+    CONF_BUSY_THRESHOLD,
+    CONF_CROWDED_THRESHOLD,
     CONF_REDUCTION_PERCENT,
+    DEFAULT_BUSY_THRESHOLD,
+    DEFAULT_CROWDED_THRESHOLD,
     DEFAULT_REDUCTION_PERCENT,
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
@@ -171,15 +175,41 @@ def _percent_box(min_value: int, max_value: int) -> vol.All:
     )
 
 
+def _density_box() -> vol.All:
+    """A number-box selector for a people-per-16-square-metre threshold.
+
+    Fine steps because the useful range is small: one person per 20 m2 is
+    0.8, one per 10 m2 is 1.6.
+    """
+    return vol.All(
+        NumberSelector(
+            NumberSelectorConfig(
+                min=0.01,
+                max=16,
+                step=0.01,
+                mode=NumberSelectorMode.BOX,
+                unit_of_measurement="people/16m²",
+            )
+        ),
+        vol.Coerce(float),
+    )
+
+
 class PlanetFitnessOptionsFlow(OptionsFlow):
-    """Options flow: poll interval plus the occupancy reduction percentage."""
+    """Options flow: poll interval, occupancy reduction, crowding thresholds."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Ask for the scan interval and the reduction percentage."""
+        """Ask for the scan interval, reduction, and crowding thresholds."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            # Inverted thresholds would make "busy" unreachable, so reject
+            # them here rather than silently producing a two-state sensor.
+            if user_input[CONF_CROWDED_THRESHOLD] < user_input[CONF_BUSY_THRESHOLD]:
+                errors[CONF_CROWDED_THRESHOLD] = "thresholds_inverted"
+            else:
+                return self.async_create_entry(data=user_input)
 
         options = self.config_entry.options
         schema = vol.Schema(
@@ -196,9 +226,20 @@ class PlanetFitnessOptionsFlow(OptionsFlow):
                         CONF_REDUCTION_PERCENT, DEFAULT_REDUCTION_PERCENT
                     ),
                 ): _percent_box(0, 90),
+                vol.Required(
+                    CONF_BUSY_THRESHOLD,
+                    default=options.get(CONF_BUSY_THRESHOLD, DEFAULT_BUSY_THRESHOLD),
+                ): _density_box(),
+                vol.Required(
+                    CONF_CROWDED_THRESHOLD,
+                    default=options.get(
+                        CONF_CROWDED_THRESHOLD, DEFAULT_CROWDED_THRESHOLD
+                    ),
+                ): _density_box(),
             }
         )
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(schema, user_input),
+            errors=errors,
         )

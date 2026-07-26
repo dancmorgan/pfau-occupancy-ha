@@ -11,6 +11,9 @@ PLATFORMS = ["sensor"]
 async def async_setup_entry(hass: HomeAssistant, entry: PlanetFitnessConfigEntry) -> bool:
     """Set up Planet Fitness AU Occupancy from a config entry."""
     coordinator = PlanetFitnessCoordinator(hass, entry)
+    # Profiles must be in place before the first refresh, so the first poll can
+    # already derive density for clubs that have a floor area.
+    await coordinator.async_load_club_profiles()
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 
