@@ -10,6 +10,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import EntityCategory
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -18,6 +19,7 @@ from homeassistant.util import dt as dt_util
 from pfau_occupancy import Club
 
 from .club_data import ClubProfile
+from .const import DOMAIN
 from .coordinator import PlanetFitnessConfigEntry, PlanetFitnessCoordinator
 from .density import Busyness, DensityReading
 from .estimator import ClubEstimate
@@ -66,14 +68,24 @@ class PlanetFitnessClubSensorBase(
     disappears from a poll response (renamed, or temporarily dropped), `_club`
     resolves to None and `available` goes False rather than removing the entity.
 
-    Deliberately not attached to a Device: a device per club would trigger HA's
-    bulk "name and assign area" onboarding prompt for every club on first setup,
-    which isn't wanted here. These are plain, ungrouped sensor entities.
+    Each club is its own Device, grouping its five sensors under one card
+    instead of a flat list — worth the onboarding friction of HA prompting to
+    name/assign-area a new device per club on first setup. `has_entity_name`
+    means each subclass's `_attr_name` is just the entity's own short name
+    ("Reported Occupancy"); the device name ("Morayfield") is prepended by
+    the frontend.
     """
+
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator)
         self._club_key = club_key
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, club_key)},
+            name=coordinator.data[club_key].name.title(),
+            manufacturer="Planet Fitness Australia",
+        )
 
     @property
     def _club(self) -> Club | None:
@@ -103,12 +115,11 @@ class PlanetFitnessReportedSensor(PlanetFitnessOccupancySensorBase):
     a fixed timer (the counter window), so this is a trailing sum of arrivals.
     """
 
+    _attr_name = "Reported Occupancy"
+
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
         self._attr_unique_id = f"{club_key}_occupancy"
-        self._attr_name = (
-            f"{coordinator.data[club_key].name.title()} Reported Occupancy"
-        )
 
     @property
     def native_value(self) -> int | None:
@@ -134,10 +145,11 @@ class PlanetFitnessRealSensor(PlanetFitnessOccupancySensorBase):
     reported count (see estimator.py for why).
     """
 
+    _attr_name = "Real Occupancy"
+
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
         self._attr_unique_id = f"{club_key}_estimated"
-        self._attr_name = f"{coordinator.data[club_key].name.title()} Real Occupancy"
 
     @property
     def _estimate(self) -> ClubEstimate | None:
@@ -179,11 +191,11 @@ class PlanetFitnessStaffingSensor(PlanetFitnessClubSensorBase):
     _attr_options = [state.value for state in Staffing]
     _attr_translation_key = "staffing"
     _attr_icon = "mdi:clock-outline"
+    _attr_name = "Staffing"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
         self._attr_unique_id = f"{club_key}_staffing"
-        self._attr_name = f"{coordinator.data[club_key].name.title()} Staffing"
         self._unsub_transition: CALLBACK_TYPE | None = None
 
     @property
@@ -281,11 +293,11 @@ class PlanetFitnessFloorAreaSensor(PlanetFitnessClubSensorBase):
     _attr_native_unit_of_measurement = "m²"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:floor-plan"
+    _attr_name = "Floor Area"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
         self._attr_unique_id = f"{club_key}_floor_area"
-        self._attr_name = f"{coordinator.data[club_key].name.title()} Floor Area"
 
     @property
     def _area(self) -> float | None:
@@ -306,20 +318,20 @@ class PlanetFitnessBusynessSensor(PlanetFitnessClubSensorBase):
 
     Estimated real occupancy per 16 square metres of effective floor area
     (configured area_sqm with dead space subtracted — see density.py), banded
-    by the thresholds from the integration options (or this club's overrides
-    in clubs.yaml). Needs an `area_sqm` for the club, so it stays unavailable
-    until one is set.
+    by the thresholds from the integration options (globally, or overridden
+    for this club — see coordinator.thresholds). Needs an `area_sqm` for the
+    club, so it stays unavailable until one is set.
     """
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = [band.value for band in Busyness]
     _attr_translation_key = "busyness"
     _attr_icon = "mdi:gauge"
+    _attr_name = "Busyness"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
         self._attr_unique_id = f"{club_key}_busyness"
-        self._attr_name = f"{coordinator.data[club_key].name.title()} Busyness"
 
     @property
     def _density(self) -> DensityReading | None:

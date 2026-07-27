@@ -10,6 +10,7 @@ from conftest import load_module
 _club_data = load_module("club_data")
 ClubDataError = _club_data.ClubDataError
 load_club_profiles = _club_data.load_club_profiles
+parse_club_data = _club_data.parse_club_data
 
 SHIPPED_FILE = (
     Path(__file__).parent.parent
@@ -53,16 +54,12 @@ clubs:
     timezone: Australia/Brisbane
     staffed:
       weekdays: 09:00-17:00
-    busy: 0.06
-    crowded: 0.11
 """,
     )
     profile = load_club_profiles(path)["morayfield"]
     assert profile.name == "Morayfield"
     assert profile.area_sqm == 1200.0
     assert profile.timezone == "Australia/Brisbane"
-    assert profile.busy_threshold == 0.06
-    assert profile.crowded_threshold == 0.11
     assert len(profile.schedule.staffed_spans) == 5
     assert profile.schedule.open_spans is None
 
@@ -94,7 +91,7 @@ def test_all_fields_optional(tmp_path: Path) -> None:
         "clubs:\n  a_club:\n    area_sqm: 0\n",
         "clubs:\n  a_club:\n    area_sqm: -5\n",
         "clubs:\n  a_club:\n    area_sqm: big\n",
-        "clubs:\n  a_club:\n    busy: 0.10\n    crowded: 0.05\n",
+        "clubs:\n  a_club:\n    busy: 0.10\n",  # busy/crowded no longer a clubs.yaml field
         "clubs:\n  a_club:\n    staffed:\n      mon: nine to five\n",
         "clubs:\n  a_club: 500\n",
         "clubs: [a_club]\n",
@@ -112,3 +109,16 @@ def test_error_message_names_the_club(tmp_path: Path) -> None:
         load_club_profiles(
             write(tmp_path, "clubs:\n  morayfield:\n    area_sqm: -1\n")
         )
+
+
+def test_parse_club_data_matches_load_club_profiles(tmp_path: Path) -> None:
+    """load_club_profiles is just parse_club_data fed from a file."""
+    text = "clubs:\n  a_club:\n    area_sqm: 500\n"
+    from_text = parse_club_data(text, "some/source")
+    from_file = load_club_profiles(write(tmp_path, text))
+    assert from_text == from_file
+
+
+def test_parse_club_data_error_names_its_source() -> None:
+    with pytest.raises(ClubDataError, match="my-source"):
+        parse_club_data("clubs:\n  a_club:\n    area_sqm: -1\n", "my-source")

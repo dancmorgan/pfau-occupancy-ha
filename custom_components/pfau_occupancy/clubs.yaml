@@ -1,48 +1,33 @@
 # Per-club facts that the Planet Fitness portal does not expose.
 #
-# The occupancy endpoint returns only a club's name, address, current count
-# and capacity limit. Floor area and staffed hours have to come from
-# somewhere, so until there's an API for them they live here and are
-# maintained by hand.
+# The occupancy endpoint returns only a club's name, address, current count and capacity limit. Floor area and staffed hours have to come from somewhere, so until there's an API for them they live here.
+#
+# ---------------------------------------------------------------------------
+# This file is maintainer-authored, not user-editable
+# ---------------------------------------------------------------------------
+# Everything below is meant to be an objective fact about a club — its floor area, its hours — authored once here and fetched by every install (the running integration refetches this exact file from the GitHub repo on restart and every 24h, so a correction ships without anyone needing to pull a new release). There is deliberately no way to override it per-user, on disk or otherwise: if a figure here is wrong or a club has changed, please open a GitHub issue against the repo rather than editing a local copy, since any local edit would just be overwritten by the next fetch anyway.
+#
+# Subjective settings — what counts as "busy", the occupancy reduction percentage — are a different thing entirely and are configured per-user through the integration's Options in the Home Assistant UI (including a per-club threshold override), not here.
 #
 # ---------------------------------------------------------------------------
 # Finding a club's key
 # ---------------------------------------------------------------------------
-# Keys are the club's slugified name: lowercased, accents stripped, every run
-# of non-alphanumeric characters collapsed to a single underscore. It is the
-# same slug that appears in the entity IDs, so the quickest way to find it is
-# to look at an existing sensor: `sensor.morayfield_reported_occupancy` means
-# the key is `morayfield`.
+# Keys are the club's slugified name: lowercased, accents stripped, every run of non-alphanumeric characters collapsed to a single underscore. It is the same slug that appears in the entity IDs, so the quickest way to find it is to look at an existing sensor: `sensor.morayfield_reported_occupancy` means the key is `morayfield`.
 #
-# Turn on debug logging for the integration and it will also log, once per
-# poll, which discovered clubs have no entry here.
+# Turn on debug logging for the integration and it will also log, once per poll, which discovered clubs have no entry here.
 #
 # ---------------------------------------------------------------------------
 # Fields (all optional)
 # ---------------------------------------------------------------------------
-#   name      Free text, for your benefit when reading this file. Entity names
-#             always come from the API, not from here.
-#   area_sqm  Usable gym floor area in square metres. Drives the Busyness and
-#             Density sensors. Use the area members actually train in — count
-#             the weights floor, cardio floor and studios, but not offices,
-#             change rooms or car parks, or crowding will read low.
-#   timezone  IANA name, e.g. Australia/Brisbane. Defaults to Home Assistant's
-#             own timezone, so only set it for clubs in a different state.
-#   open      Weekly opening hours. Omit entirely for a 24/7 club (the usual
-#             case) — omitted means always open, not never open.
+#   name      Free text, for your benefit when reading this file. Entity names always come from the API, not from here.
+#   area_sqm  Usable gym floor area in square metres. Drives the Busyness and Density sensors. Use the area members actually train in — count the weights floor, cardio floor and studios, but not offices, change rooms or car parks, or crowding will read low.
+#   timezone  IANA name, e.g. Australia/Brisbane. Defaults to Home Assistant's own timezone, so only set it for clubs in a different state.
+#   open      Weekly opening hours. Omit entirely for a 24/7 club (the usual case) — omitted means always open, not never open.
 #   staffed   Weekly staffed hours. Omit for a club that is never staffed.
-#   busy      Override the integration's busy threshold, in people per 16
-#   crowded   square metres, for this club only. Set both or neither.
 #
-# Day keys are mon/tue/wed/thu/fri/sat/sun plus the shorthands `daily`,
-# `weekdays` (mon-fri) and `weekends` (sat-sun). Later keys do not replace
-# earlier ones — `daily` followed by `sat` gives Saturday both sets of hours —
-# so list each day only once.
+# Day keys are mon/tue/wed/thu/fri/sat/sun plus the shorthands `daily`, `weekdays` (mon-fri) and `weekends` (sat-sun). Later keys do not replace earlier ones — `daily` followed by `sat` gives Saturday both sets of hours — so list each day only once.
 #
-# Times are "HH:MM-HH:MM" on a 24-hour clock. Give one range or a list of
-# ranges per day. Use "24:00" for end-of-day; a range whose end is at or
-# before its start is read as running past midnight, so "22:00-02:00" ends at
-# 2am the following morning.
+# Times are "HH:MM-HH:MM" on a 24-hour clock. Give one range or a list of ranges per day. Use "24:00" for end-of-day; a range whose end is at or before its start is read as running past midnight, so "22:00-02:00" ends at 2am the following morning.
 #
 # ---------------------------------------------------------------------------
 # Example (delete or replace — these numbers are placeholders, not real data)
@@ -52,7 +37,6 @@
 #     name: Morayfield
 #     area_sqm: 1200
 #     timezone: Australia/Brisbane
-#     # No `open:` key — open 24/7.
 #     staffed:
 #       weekdays:
 #         - 09:00-13:00
@@ -63,31 +47,12 @@
 #   some_smaller_club:
 #     name: Some Smaller Club
 #     area_sqm: 650
-#     open:
-#       weekdays: 05:00-22:00
-#       weekends: 07:00-18:00
 #     staffed:
 #       weekdays: 09:00-17:00
-#     # This one is cramped; call it crowded sooner than the global default.
-#     busy: 0.96
-#     crowded: 1.76
 #
-# ---------------------------------------------------------------------------
-# Seeded skeleton — SCRAPED DATA, SPOT-CHECK BEFORE TRUSTING
-# ---------------------------------------------------------------------------
-# Keys and names were pulled from the club list at
-# https://planetfitnessaustralia.com.au/sitemap.xml (the /gyms/<slug>-<state>/
-# pages); `timezone` from the state in that slug. `area_sqm` is each club's
-# "Huge Floor Space" figure quoted on its own page (all clubs are open 24/7,
-# so no `open:` key is set anywhere below). `staffed` is the "STAFFED HOURS"
-# text that appeared identically on every club page checked:
-# 6am-9pm Mon-Thu, 6am-8pm Fri, 9am-5pm Sat, 9am-4pm Sun.
+# Keys and names were pulled from the club list at https://planetfitnessaustralia.com.au/sitemap.xml (the /gyms/<slug>-<state>/ pages); `timezone` from the state in that slug. `area_sqm` is each club's "Huge Floor Space" figure quoted on its own page (all clubs are open 24/7, so no `open:` key is set anywhere below). `staffed` is the "STAFFED HOURS" text that appeared identically on every club page checked: 6am-9pm Mon-Thu, 6am-8pm Fri, 9am-5pm Sat, 9am-4pm Sun.
 #
-# This was pulled from marketing copy, not a structured API, so treat it as a
-# first draft: four clubs had no floor-space figure on their page (left
-# unset below rather than guessed), and Tuggerah's page had no staffed-hours
-# section at all (only a one-off holiday notice), so its `staffed:` key is
-# also left unset — confirm both by phone/in person before relying on them.
+# This was pulled from marketing copy, not a structured API: four clubs had no floor-space figure on their page (left unset below rather than guessed), and Tuggerah's page had no staffed-hours section at all (only a one-off holiday notice), so its `staffed:` key is also left unset. If any of this is wrong, please open a GitHub issue rather than editing it locally — see above.
 
 clubs:
   armstrong_creek:

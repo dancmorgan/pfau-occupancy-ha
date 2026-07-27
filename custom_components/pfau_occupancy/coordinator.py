@@ -1,15 +1,18 @@
 """Data update coordinator for the Planet Fitness AU Occupancy integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
-from datetime import timedelta, tzinfo
+from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
 
+from aiohttp import ClientError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, CONF_SCAN_INTERVAL
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -25,9 +28,14 @@ from .club_data import (
     ClubDataError,
     ClubProfile,
     load_club_profiles,
+    parse_club_data,
 )
 from .const import (
+    CLUB_DATA_CACHE_FILENAME,
+    CLUB_DATA_REFRESH_HOURS,
+    CLUB_DATA_URL,
     CONF_BUSY_THRESHOLD,
+    CONF_CLUB_THRESHOLDS,
     CONF_CROWDED_THRESHOLD,
     CONF_REDUCTION_PERCENT,
     DEFAULT_BUSY_THRESHOLD,
@@ -41,6 +49,8 @@ from .estimator import ClubEstimate, estimate_occupancy
 
 _LOGGER = logging.getLogger(__name__)
 
+_CLUB_DATA_FETCH_TIMEOUT = 10
+
 type PlanetFitnessConfigEntry = ConfigEntry["PlanetFitnessCoordinator"]
 
 
@@ -51,6 +61,11 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
     a flat percentage reduction to the portal's reported count (see
     estimator.py for why), and — for clubs with a floor area in clubs.yaml —
     how crowded that estimate makes the club.
+
+    Club facts (area_sqm, hours) are loaded separately from occupancy: see
+    async_load_club_profiles for how they're fetched from GitHub, cached, and
+    falling back to the bundled copy. Crowding thresholds are a different,
+    user-configurable thing — see thresholds().
     """
 
     config_entry: PlanetFitnessConfigEntry
@@ -88,27 +103,98 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
         self._warned_missing_profiles = False
 
     async def async_load_club_profiles(self) -> None:
-        """Read clubs.yaml off the event loop, before the first refresh.
+        """(Re)load club profiles: fetched from GitHub, cache, or bundled fallback.
 
-        A broken file must not take the integration down: the occupancy
-        sensors don't depend on it, so the error is logged and the affected
-        sensors stay unavailable until it's fixed.
+        Never raises — every layer is independently fault-tolerant, so a
+        fetch failure falls through to the cache, and a cache failure falls
+        through to the copy shipped with this release. Safe to call again
+        later to pick up a fresh fetch; call `async_start_club_data_refresh`
+        to do that on a timer.
         """
+        self.profiles = await self._async_load_base_club_data()
+        _LOGGER.debug("Loaded profiles for %d club(s)", len(self.profiles))
+        await self._async_resolve_timezones()
+
+    @callback
+    def async_start_club_data_refresh(self) -> CALLBACK_TYPE:
+        """Start periodically refetching clubs.yaml, so a running instance picks
+        up repo changes without a restart. Returns an unsub callback.
+        """
+        return async_track_time_interval(
+            self.hass,
+            self._async_refresh_club_data,
+            timedelta(hours=CLUB_DATA_REFRESH_HOURS),
+        )
+
+    async def _async_refresh_club_data(self, _now: datetime) -> None:
+        await self.async_load_club_profiles()
+        self.async_update_listeners()
+
+    async def _async_load_base_club_data(self) -> dict[str, ClubProfile]:
+        """The fetched-from-GitHub base data, falling back to cache then bundled."""
+        remote_text = await self._async_fetch_remote_club_data()
+        if remote_text is not None:
+            try:
+                profiles = parse_club_data(remote_text, "remote clubs.yaml")
+            except ClubDataError as err:
+                _LOGGER.warning("Ignoring malformed remote clubs.yaml: %s", err)
+            else:
+                await self._async_write_club_data_cache(remote_text)
+                return profiles
+
+        cached_text = await self._async_read_club_data_cache()
+        if cached_text is not None:
+            try:
+                profiles = parse_club_data(cached_text, "cached clubs.yaml")
+            except ClubDataError as err:
+                _LOGGER.warning("Ignoring malformed cached clubs.yaml: %s", err)
+            else:
+                _LOGGER.debug("Using cached club data; remote fetch unavailable")
+                return profiles
+
         path = Path(__file__).parent / CLUB_DATA_FILENAME
         try:
-            self.profiles = await self.hass.async_add_executor_job(
-                load_club_profiles, path
-            )
+            return await self.hass.async_add_executor_job(load_club_profiles, path)
         except ClubDataError as err:
             _LOGGER.error(
-                "Ignoring club data: %s. Floor area and staffed hours will be "
-                "unavailable until this is corrected",
+                "Ignoring bundled club data: %s. Floor area and staffed hours "
+                "will be unavailable until this is corrected",
                 err,
             )
-            self.profiles = {}
-        else:
-            _LOGGER.debug("Loaded profiles for %d club(s)", len(self.profiles))
-        await self._async_resolve_timezones()
+            return {}
+
+    async def _async_fetch_remote_club_data(self) -> str | None:
+        """Best-effort fetch of the latest clubs.yaml from GitHub.
+
+        Never raises — any network problem just falls through to the cache or
+        bundled copy instead of failing the whole profile load.
+        """
+        session = async_get_clientsession(self.hass)
+        try:
+            async with asyncio.timeout(_CLUB_DATA_FETCH_TIMEOUT):
+                response = await session.get(CLUB_DATA_URL)
+                response.raise_for_status()
+                return await response.text()
+        except (ClientError, TimeoutError) as err:
+            _LOGGER.debug("Could not fetch %s: %s", CLUB_DATA_URL, err)
+            return None
+
+    async def _async_write_club_data_cache(self, text: str) -> None:
+        path = Path(self.hass.config.path(CLUB_DATA_CACHE_FILENAME))
+        try:
+            await self.hass.async_add_executor_job(path.write_text, text, "utf-8")
+        except OSError as err:
+            _LOGGER.debug("Could not cache club data to %s: %s", path, err)
+
+    async def _async_read_club_data_cache(self) -> str | None:
+        path = Path(self.hass.config.path(CLUB_DATA_CACHE_FILENAME))
+        if not path.is_file():
+            return None
+        try:
+            return await self.hass.async_add_executor_job(path.read_text, "utf-8")
+        except OSError as err:
+            _LOGGER.debug("Could not read cached club data at %s: %s", path, err)
+            return None
 
     async def _async_resolve_timezones(self) -> None:
         """Turn the profiles' IANA names into tzinfo objects up front.
@@ -140,23 +226,19 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
         return self._timezones.get(club_key) or dt_util.DEFAULT_TIME_ZONE
 
     def thresholds(self, club_key: str) -> tuple[float, float]:
-        """This club's (busy, crowded) thresholds, honouring any override."""
-        profile = self.profiles.get(club_key)
-        if profile is None:
+        """This club's (busy, crowded) thresholds, honouring any GUI override.
+
+        Per-club overrides live in entry.options, set via the options flow's
+        club_threshold_values step — always written as a matched busy/crowded
+        pair (see config_flow.py), never partial.
+        """
+        override = self.config_entry.options.get(CONF_CLUB_THRESHOLDS, {}).get(
+            club_key
+        )
+        if override is None:
             return self.busy_threshold, self.crowded_threshold
-        busy = (
-            self.busy_threshold
-            if profile.busy_threshold is None
-            else profile.busy_threshold
-        )
-        crowded = (
-            self.crowded_threshold
-            if profile.crowded_threshold is None
-            else profile.crowded_threshold
-        )
-        # clubs.yaml rejects an inverted pair, and so does the options flow,
-        # but overriding only one of the two can still cross them. Keep the
-        # bands ordered so "busy" stays reachable.
+        busy = override[CONF_BUSY_THRESHOLD]
+        crowded = override[CONF_CROWDED_THRESHOLD]
         return busy, max(busy, crowded)
 
     async def _async_update_data(self) -> dict[str, Club]:
