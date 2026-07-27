@@ -17,6 +17,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: PlanetFitnessConfigEntry
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 
+    # Refetches clubs.yaml from the repo periodically, so club data can be
+    # updated without every user pulling a new release (see coordinator.py).
+    entry.async_on_unload(coordinator.async_start_club_data_refresh())
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True

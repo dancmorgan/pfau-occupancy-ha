@@ -22,9 +22,7 @@ Settings → Devices & Services → Add Integration → "Planet Fitness AU
 Occupancy". Enter your Planet Fitness Australia member portal email and
 password.
 
-Once set up, the integration's Options let you tune the polling interval
-(default 5 minutes), the occupancy reduction percentage, and the busy /
-crowded thresholds — all described below.
+Once set up, the integration's Options (a menu, reached the same way) let you tune the polling interval (default 5 minutes), the occupancy reduction percentage, and the busy/crowded thresholds — either generally or overridden for one specific club — all described below. Floor area and hours are not configurable there; see the next section for why.
 
 ## Reported vs Real occupancy
 
@@ -36,13 +34,9 @@ Each club gets two sensors.
 
 ## Staffed hours and floor area
 
-The portal's occupancy endpoint returns a club's name, address, current count
-and capacity limit — and nothing else. Opening hours and floor size aren't in
-it, or anywhere else in the API we've found, so they live in
-[`custom_components/pfau_occupancy/clubs.yaml`](custom_components/pfau_occupancy/clubs.yaml)
-and are maintained by hand. **It ships empty**: until you add a club, that
-club's Staffing, Floor Area and Busyness sensors report `unavailable`. The
-two occupancy sensors don't depend on it and work regardless.
+The portal's occupancy endpoint returns a club's name, address, current count and capacity limit — and nothing else. Opening hours and floor size aren't in it, or anywhere else in the API we've found, so they come from [`clubs.yaml`](custom_components/pfau_occupancy/clubs.yaml) — pre-seeded with every AU club we could find. Until a club has an entry there, its Staffing, Floor Area and Busyness sensors report `unavailable`; the two occupancy sensors don't depend on it and work regardless.
+
+These are objective facts about a club, not user preferences, so `clubs.yaml` is maintainer-authored only — there's no per-user override for it, in the GUI or in a file. If a club's area or hours are wrong or have changed, please [open an issue](https://github.com/dancmorgan/pfau-occupancy-ha/issues) rather than looking for a local file to edit; the fix then ships to everyone.
 
 ```yaml
 clubs:
@@ -67,12 +61,15 @@ Day keys are `mon`…`sun` plus `daily`, `weekdays` and `weekends`. Times are
 `HH:MM-HH:MM`; `24:00` means end-of-day, and a range that ends at or before it
 starts (`22:00-02:00`) runs past midnight. Omitting `open` means open 24/7,
 omitting `staffed` means never staffed. The full field reference is in the
-comments at the top of the file.
+comments at the top of `clubs.yaml`.
 
 For `area_sqm`, use the floor members actually train on — weights, cardio and
 studios — and leave out offices, change rooms and parking, or crowding will
-read low. Note that the file is part of the integration, so a HACS update
-replaces it; keep a copy of your entries.
+read low.
+
+### clubs.yaml stays fresh without a new release
+
+`clubs.yaml` is **refetched from this repo** by the running integration on restart and every 24 hours, so a correction or a newly-added club reaches everyone without waiting for the next release. If GitHub is unreachable when the integration starts, it falls back to the last successfully fetched copy (cached in your Home Assistant config directory), and if there's no cache yet either, to whatever version shipped with your installed release.
 
 ## Quiet, busy, crowded
 
@@ -87,13 +84,11 @@ which is room a member can actually stand in. Busyness is measured against
 that smaller effective area, which tracks how packed the floor feels more
 closely than the raw square metreage does.
 
-Thresholds are in people per 16 square metres of that effective area, and are
-easiest to read as their reciprocal: the default `busy` of 0.8 is one person
-per 20 m², and `crowded` of 1.6 is one per 10 m². Both are configurable in the
-integration's Options, and any club can override them with its own `busy:` /
-`crowded:` keys in `clubs.yaml`.
+Thresholds are in people per 16 square metres of that effective area, and are easiest to read as their reciprocal: the default `busy` of 0.8 is one person per 20 m², and `crowded` of 1.6 is one per 10 m². These are subjective, personal-feel settings, not facts about a club, so — unlike area_sqm/hours above — they're fully user-configurable: set them generally in the integration's Options, or override just one club (Options → "Override a club's threshold") if it consistently feels busier or quieter than the general setting suggests. Leave both fields blank on that per-club form to remove the override again.
 
 ## What you get
+
+Each discovered club is its own Device (Settings → Devices & Services → Planet Fitness AU Occupancy), grouping its five sensors under one card instead of a flat entity list. Since a device is created per club, first setup (or any time a new club appears) prompts Home Assistant's usual "N new devices found" review — worth it for the grouping.
 
 Per club:
 

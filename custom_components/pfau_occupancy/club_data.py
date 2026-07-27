@@ -1,16 +1,27 @@
-"""Loader for clubs.yaml — the hand-maintained per-club facts.
+"""Parsing for clubs.yaml — the maintainer-authored per-club facts.
 
 Floor area and staffed hours are not in the portal's occupancy endpoint (or
-anywhere else in its API that we've found), so they live in a YAML file in
-this directory that is edited by hand and shipped with the integration. If
-Planet Fitness ever exposes them, this module is the seam to replace.
+anywhere else in its API that we've found), so they live in a YAML file with
+this schema instead. If Planet Fitness ever exposes them, this module is the
+seam to replace.
+
+These are objective facts about a club (its floor area, its hours), authored
+once in the repo's clubs.yaml and fetched by every install — never edited or
+overridden per-user. If a figure is wrong, that's a GitHub issue against the
+repo, not a local file to hand-edit. Subjective settings (what counts as
+"busy", the occupancy reduction percentage) are a different thing entirely:
+those are per-user preferences, configured through the integration's Options
+in the Home Assistant UI — see config_flow.py and coordinator.thresholds.
 
 Clubs are keyed by the same slug the entities use (`Club.key`), so a club
-present in the API but absent from the file simply has no profile, and its
+present in the API but absent from the data simply has no profile, and its
 area/staffing/busyness sensors report unavailable.
 
-Deliberately free of Home Assistant imports so it can be unit-tested with
-plain pytest. Uses PyYAML, which ships with Home Assistant core.
+This module only parses text — it doesn't know where that text came from (a
+bundled file or a GitHub fetch); coordinator.py owns fetching, caching and
+reading those sources. Deliberately free of Home Assistant imports so it can
+be unit-tested with plain pytest. Uses PyYAML, which ships with Home
+Assistant core.
 """
 from __future__ import annotations
 
@@ -26,9 +37,7 @@ _LOGGER = logging.getLogger(__name__)
 
 CLUB_DATA_FILENAME = "clubs.yaml"
 
-_ALLOWED_KEYS = frozenset(
-    {"name", "area_sqm", "timezone", "open", "staffed", "busy", "crowded"}
-)
+_ALLOWED_KEYS = frozenset({"name", "area_sqm", "timezone", "open", "staffed"})
 
 
 class ClubDataError(ValueError):
@@ -46,13 +55,10 @@ class ClubProfile:
     area_sqm: float | None
     timezone: str | None
     schedule: ClubSchedule | None
-    # Per-club threshold overrides; None means "use the integration options".
-    busy_threshold: float | None
-    crowded_threshold: float | None
 
 
 def load_club_profiles(path: Path) -> dict[str, ClubProfile]:
-    """Parse clubs.yaml into profiles keyed by club slug.
+    """Parse a clubs.yaml-formatted file into profiles keyed by club slug.
 
     A missing file is not an error — it just means no club has a profile yet.
     Malformed content raises ClubDataError; the caller decides whether that
@@ -63,29 +69,43 @@ def load_club_profiles(path: Path) -> dict[str, ClubProfile]:
         return {}
 
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as err:
+        text = path.read_text(encoding="utf-8")
+    except OSError as err:
         raise ClubDataError(f"Could not read {path.name}: {err}") from err
+
+    return parse_club_data(text, path.name)
+
+
+def parse_club_data(text: str, source: str) -> dict[str, ClubProfile]:
+    """Parse clubs.yaml-formatted text into profiles keyed by club slug.
+
+    `source` names where `text` came from (a filename, URL, ...) — used only
+    to make ClubDataError messages point somewhere useful.
+    """
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError as err:
+        raise ClubDataError(f"Could not parse {source}: {err}") from err
 
     if raw is None:
         return {}
     if not isinstance(raw, dict):
-        raise ClubDataError(f"{path.name}: expected a mapping at the top level")
+        raise ClubDataError(f"{source}: expected a mapping at the top level")
 
     clubs = raw.get("clubs")
     if clubs is None:
         return {}
     if not isinstance(clubs, dict):
-        raise ClubDataError(f"{path.name}: 'clubs' must be a mapping of slug to club")
+        raise ClubDataError(f"{source}: 'clubs' must be a mapping of slug to club")
 
     return {
-        str(key): _parse_club(str(key), value, path.name)
+        str(key): _parse_club(str(key), value, source)
         for key, value in clubs.items()
     }
 
 
-def _parse_club(key: str, raw: object, filename: str) -> ClubProfile:
-    where = f"{filename}: clubs.{key}"
+def _parse_club(key: str, raw: object, source: str) -> ClubProfile:
+    where = f"{source}: clubs.{key}"
     if not isinstance(raw, dict):
         raise ClubDataError(f"{where}: expected a mapping")
 
@@ -97,11 +117,6 @@ def _parse_club(key: str, raw: object, filename: str) -> ClubProfile:
             f"{where}: unknown field(s) {', '.join(sorted(unknown))} "
             f"(expected {', '.join(sorted(_ALLOWED_KEYS))})"
         )
-
-    busy = _positive_number(raw.get("busy"), f"{where}.busy")
-    crowded = _positive_number(raw.get("crowded"), f"{where}.crowded")
-    if busy is not None and crowded is not None and crowded < busy:
-        raise ClubDataError(f"{where}: crowded ({crowded}) is below busy ({busy})")
 
     # No hours at all means no staffing sensor for this club, which is a
     # different thing from "open 24/7 and never staffed".
@@ -118,8 +133,6 @@ def _parse_club(key: str, raw: object, filename: str) -> ClubProfile:
         area_sqm=_positive_number(raw.get("area_sqm"), f"{where}.area_sqm"),
         timezone=raw.get("timezone"),
         schedule=schedule,
-        busy_threshold=busy,
-        crowded_threshold=crowded,
     )
 
 

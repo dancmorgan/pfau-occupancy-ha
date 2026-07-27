@@ -18,6 +18,9 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
 )
 
 from pfau_occupancy import (
@@ -28,6 +31,7 @@ from pfau_occupancy import (
 
 from .const import (
     CONF_BUSY_THRESHOLD,
+    CONF_CLUB_THRESHOLDS,
     CONF_CROWDED_THRESHOLD,
     CONF_REDUCTION_PERCENT,
     DEFAULT_BUSY_THRESHOLD,
@@ -36,6 +40,8 @@ from .const import (
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
 )
+
+CONF_CLUB = "club"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -196,12 +202,32 @@ def _density_box() -> vol.All:
 
 
 class PlanetFitnessOptionsFlow(OptionsFlow):
-    """Options flow: poll interval, occupancy reduction, crowding thresholds."""
+    """Options flow: poll interval, occupancy reduction, crowding thresholds.
+
+    Everything here is a subjective, personal-feel setting — what counts as
+    "busy", how much to discount the reported count — as opposed to facts
+    about a club (its floor area, its hours), which come from clubs.yaml and
+    are never user-configurable; see club_data.py for why. That split is why
+    this is a menu: general settings apply to every club, and a club's own
+    threshold override is a separate per-club step.
+    """
+
+    def __init__(self) -> None:
+        self._club_key: str | None = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Ask for the scan interval, reduction, and crowding thresholds."""
+        """Land on a menu: general settings, or one club's threshold override."""
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["general", "club_thresholds"],
+        )
+
+    async def async_step_general(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the scan interval, reduction, and global crowding thresholds."""
         errors: dict[str, str] = {}
         if user_input is not None:
             # Inverted thresholds would make "busy" unreachable, so reject
@@ -209,7 +235,9 @@ class PlanetFitnessOptionsFlow(OptionsFlow):
             if user_input[CONF_CROWDED_THRESHOLD] < user_input[CONF_BUSY_THRESHOLD]:
                 errors[CONF_CROWDED_THRESHOLD] = "thresholds_inverted"
             else:
-                return self.async_create_entry(data=user_input)
+                return self.async_create_entry(
+                    data={**self.config_entry.options, **user_input}
+                )
 
         options = self.config_entry.options
         schema = vol.Schema(
@@ -239,7 +267,98 @@ class PlanetFitnessOptionsFlow(OptionsFlow):
             }
         )
         return self.async_show_form(
-            step_id="init",
+            step_id="general",
             data_schema=self.add_suggested_values_to_schema(schema, user_input),
             errors=errors,
+        )
+
+    async def async_step_club_thresholds(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick which discovered club to set a threshold override for."""
+        coordinator = self.config_entry.runtime_data
+        clubs = coordinator.data if coordinator is not None else {}
+        if not clubs:
+            return self.async_abort(reason="no_clubs_discovered")
+
+        if user_input is not None:
+            self._club_key = user_input[CONF_CLUB]
+            return await self.async_step_club_threshold_values()
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_CLUB): SelectSelector(
+                    SelectSelectorConfig(
+                        mode=SelectSelectorMode.DROPDOWN,
+                        options=[
+                            {"value": key, "label": club.name.title()}
+                            for key, club in sorted(
+                                clubs.items(), key=lambda item: item[1].name
+                            )
+                        ],
+                    )
+                ),
+            }
+        )
+        return self.async_show_form(step_id="club_thresholds", data_schema=schema)
+
+    async def async_step_club_threshold_values(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Set (or clear) one club's busy/crowded override.
+
+        Leaving both fields blank clears the override, falling back to the
+        general thresholds. Setting only one is rejected — a club's pair is
+        all-or-nothing, same rule as the general step.
+        """
+        club_key = self._club_key
+        assert club_key is not None
+        coordinator = self.config_entry.runtime_data
+        club_name = coordinator.data[club_key].name.title()
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            busy = user_input.get(CONF_BUSY_THRESHOLD)
+            crowded = user_input.get(CONF_CROWDED_THRESHOLD)
+            if (busy is None) != (crowded is None):
+                errors["base"] = "club_threshold_partial"
+            elif busy is not None and crowded < busy:
+                errors[CONF_CROWDED_THRESHOLD] = "thresholds_inverted"
+            else:
+                overrides = dict(
+                    self.config_entry.options.get(CONF_CLUB_THRESHOLDS, {})
+                )
+                if busy is None:
+                    overrides.pop(club_key, None)
+                else:
+                    overrides[club_key] = {
+                        CONF_BUSY_THRESHOLD: busy,
+                        CONF_CROWDED_THRESHOLD: crowded,
+                    }
+                return self.async_create_entry(
+                    data={
+                        **self.config_entry.options,
+                        CONF_CLUB_THRESHOLDS: overrides,
+                    }
+                )
+
+        # No `default=` here: an Optional field with a default is never
+        # actually absent, which would break "leave both blank to clear".
+        schema = vol.Schema(
+            {
+                vol.Optional(CONF_BUSY_THRESHOLD): _density_box(),
+                vol.Optional(CONF_CROWDED_THRESHOLD): _density_box(),
+            }
+        )
+        # Re-show what was just (invalidly) submitted on error, same as the
+        # general step; otherwise prefill with this club's existing override.
+        if user_input is None:
+            user_input = self.config_entry.options.get(CONF_CLUB_THRESHOLDS, {}).get(
+                club_key, {}
+            )
+        return self.async_show_form(
+            step_id="club_threshold_values",
+            data_schema=self.add_suggested_values_to_schema(schema, user_input),
+            errors=errors,
+            description_placeholders={"club": club_name},
         )
