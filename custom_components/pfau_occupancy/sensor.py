@@ -176,22 +176,18 @@ class PlanetFitnessRealSensor(PlanetFitnessOccupancySensorBase):
 
 
 class PlanetFitnessStaffingSensor(PlanetFitnessClubSensorBase):
-    """Where the club is on its opening-hours timeline: staffed, unstaffed, closed.
+    """Where the club is on its opening-hours timeline: staffed, unstaffed, closed. Particularly important for black card holders who want to know if the spa will be open.
 
-    Unlike every other sensor here this doesn't move with the poll — it moves
-    with the clock — so it schedules its own update for the next boundary in
-    the club's weekly schedule instead of waiting for the coordinator.
+    Unlike every other sensor here this doesn't move with the poll — it moves with the clock — so it schedules its own update for the next boundary in the club's weekly schedule instead of waiting for the coordinator.
 
-    Unavailable for clubs with no `open`/`staffed` hours in clubs.yaml, since
-    guessing 24/7-and-never-staffed would be indistinguishable from a real
-    answer.
+    Unavailable for clubs with no `open`/`staffed` hours in clubs.yaml, since guessing 24/7-and-never-staffed would be indistinguishable from a real answer.
     """
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = [state.value for state in Staffing]
     _attr_translation_key = "staffing"
     _attr_icon = "mdi:clock-outline"
-    _attr_name = "Staffing"
+    _attr_name = "Staff Presence"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
@@ -314,13 +310,9 @@ class PlanetFitnessFloorAreaSensor(PlanetFitnessClubSensorBase):
 
 
 class PlanetFitnessBusynessSensor(PlanetFitnessClubSensorBase):
-    """How crowded the club is: quiet, busy, or crowded.
+    """How crowded the club is: quiet, busy, or crowded. Different from occupancy and based on people per square meter as an extremely large club may hold 150 people but still be quiet, whereas a small club may have 20 people but feel shoulder to shoulder.
 
-    Estimated real occupancy per 16 square metres of effective floor area
-    (configured area_sqm with dead space subtracted — see density.py), banded
-    by the thresholds from the integration options (globally, or overridden
-    for this club — see coordinator.thresholds). Needs an `area_sqm` for the
-    club, so it stays unavailable until one is set.
+    Estimated real occupancy per 16 square metres of effective floor area (4x4 metres around you after dead space subtracted — see density.py), banded by the thresholds from the integration options (globally, or overridden for this club — see coordinator.thresholds). Needs an `area_sqm` for the club, so it stays unavailable until one is set.
     """
 
     _attr_device_class = SensorDeviceClass.ENUM

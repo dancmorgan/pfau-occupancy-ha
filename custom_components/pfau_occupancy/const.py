@@ -11,8 +11,8 @@ DEFAULT_REDUCTION_PERCENT = 50
 # Crowding thresholds in people per 16 square metres of usable gym floor, applied to the estimated real occupancy. Easier to reason about as their reciprocal: 0.8 is one person per 20 m2 (roomy), 1.6 is one per 10 m2 (shoulder to shoulder around the racks). This is a subjective, personal-feel setting rather than a fact about a club, so unlike area_sqm/hours it's user-configurable — globally here, and per club via CONF_CLUB_THRESHOLDS below.
 CONF_BUSY_THRESHOLD = "busy_threshold"
 CONF_CROWDED_THRESHOLD = "crowded_threshold"
-DEFAULT_BUSY_THRESHOLD = 0.8
-DEFAULT_CROWDED_THRESHOLD = 1.6
+DEFAULT_BUSY_THRESHOLD = 0.5
+DEFAULT_CROWDED_THRESHOLD = 1.2
 
 # Per-club busy/crowded overrides, set through the options flow GUI rather than any file. Stored as entry.options[CONF_CLUB_THRESHOLDS] = {club_key: {CONF_BUSY_THRESHOLD: float, CONF_CROWDED_THRESHOLD: float}}; a club with no entry here just uses the global thresholds above. See coordinator.thresholds() and config_flow.py's club_threshold_values step.
 CONF_CLUB_THRESHOLDS = "club_thresholds"
