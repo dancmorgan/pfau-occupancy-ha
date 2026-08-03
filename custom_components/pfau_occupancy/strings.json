@@ -35,12 +35,12 @@
         }
       },
       "general": {
-        "description": "Polling interval, the occupancy reduction, and the crowding thresholds. The portal's reported count overstates real occupancy, so the Real Occupancy sensor reduces it by the reduction percentage. Busyness compares that estimate against each club's floor area: 0.8 people/16m² is one person per 20 m², 1.6 is one per 10 m². Floor area and staffed hours are set per club in clubs.yaml and are not user-configurable.",
+        "description": "Polling interval, the occupancy reduction, and the crowding thresholds. The portal's reported count overstates real occupancy, so the Real Occupancy sensor reduces it by the reduction percentage. Busyness compares that estimate against each club's floor area: 1.8 people/36m² is one person per 20 m², 3.6 is one per 10 m². Floor area and staffed hours are set per club in clubs.yaml and are not user-configurable.",
         "data": {
           "scan_interval": "Scan interval (minutes)",
           "reduction_percent": "Occupancy reduction (%)",
-          "busy_threshold": "Busy at or above (people/16m²)",
-          "crowded_threshold": "Crowded at or above (people/16m²)"
+          "busy_threshold": "Busy at or above (people/36m²)",
+          "crowded_threshold": "Crowded at or above (people/36m²)"
         }
       },
       "club_thresholds": {
@@ -52,8 +52,8 @@
       "club_threshold_values": {
         "description": "Override the busy/crowded thresholds for {club}. Leave both fields blank to remove the override and use the general thresholds again.",
         "data": {
-          "busy_threshold": "Busy at or above (people/16m²)",
-          "crowded_threshold": "Crowded at or above (people/16m²)"
+          "busy_threshold": "Busy at or above (people/36m²)",
+          "crowded_threshold": "Crowded at or above (people/36m²)"
         }
       }
     },
