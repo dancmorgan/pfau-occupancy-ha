@@ -9,7 +9,9 @@
       "Bash(python -c ' *)",
       "Bash(python3 -c \"import pfau_occupancy, os; print\\(os.path.dirname\\(pfau_occupancy.__file__\\)\\)\")",
       "Bash(python -m py_compile custom_components/pfau_occupancy/coordinator.py custom_components/pfau_occupancy/__init__.py custom_components/pfau_occupancy/club_data.py custom_components/pfau_occupancy/const.py)",
-      "Bash(python -m py_compile custom_components/pfau_occupancy/*.py)"
+      "Bash(python -m py_compile custom_components/pfau_occupancy/*.py)",
+      "Bash(python -m pytest tests/test_hours.py -q)",
+      "Bash(python -m pytest tests/test_hours.py -q -k \"NextStaffed or NextUnstaffed\" -v)"
     ]
   }
 }

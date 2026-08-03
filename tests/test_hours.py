@@ -123,6 +123,48 @@ class TestNextChange:
         ) == at(2026, 10, 4, 9, tz=SYD)
 
 
+class TestNextStaffed:
+    def test_finds_the_next_staffed_start(self) -> None:
+        change = staffed_weekday_club().next_staffed(at(*MONDAY, 14))
+        assert change == at(*MONDAY, 15)
+
+    def test_already_staffed_finds_the_following_window(self) -> None:
+        """Currently staffed means we want the *next* one, not right now."""
+        change = staffed_weekday_club().next_staffed(at(*MONDAY, 10))
+        assert change == at(*MONDAY, 15)
+
+    def test_rolls_over_a_closed_day_to_reach_staffed(self) -> None:
+        change = staffed_weekday_club().next_staffed(at(*SATURDAY, 14))
+        assert change == at(2026, 8, 3, 9)
+
+    def test_never_staffed_is_none(self) -> None:
+        assert parse_schedule(None, None).next_staffed(at(*MONDAY, 10)) is None
+
+
+class TestNextUnstaffed:
+    def test_finds_the_end_of_the_current_staffed_window(self) -> None:
+        change = staffed_weekday_club().next_unstaffed(at(*MONDAY, 10))
+        assert change == at(*MONDAY, 13)
+
+    def test_from_unstaffed_finds_the_end_of_the_next_staffed_window(self) -> None:
+        change = staffed_weekday_club().next_unstaffed(at(*MONDAY, 14))
+        assert change == at(*MONDAY, 19)
+
+    def test_closing_for_the_night_does_not_count(self) -> None:
+        """staffed -> closed must be skipped; only staffed -> unstaffed counts."""
+        schedule = parse_schedule(
+            {"daily": "05:00-22:00"},
+            # Monday's staffed window runs right up to closing (no unstaffed
+            # gap before close); Tuesday's ends earlier, leaving a real gap.
+            {"mon": "09:00-22:00", "tue": "09:00-13:00"},
+        )
+        change = schedule.next_unstaffed(at(*MONDAY, 10))
+        assert change == at(2026, 7, 28, 13)
+
+    def test_never_staffed_is_none(self) -> None:
+        assert parse_schedule(None, None).next_unstaffed(at(*MONDAY, 10)) is None
+
+
 class TestParsing:
     def test_day_aliases_expand(self) -> None:
         schedule = parse_schedule(None, {"weekends": "10:00-14:00"})

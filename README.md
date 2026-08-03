@@ -5,6 +5,7 @@ A Home Assistant custom integration that exposes several sensors helpful for tho
  - Real Occupancy Sensor - A more accurate number compared to Reported Occupancy (see below)
  - Busyness Sensor - Uses the clubs square-meterage to determine how crowded the club feels compared to just a single occupancy number.
  - Staff Status Sensor - Informs you if staff are present within the club or not. This is necessary for black card holders who want to know when they will be able to access the spa.
+ - Next Staffed / Next Unstaffed Sensors - Timestamps of when staff next arrive or leave, so you can trigger an automation or alarm directly off them instead of digging a time out of Staff Status's attributes.
 
 <img src="https://raw.githubusercontent.com/dancmorgan/pfau-occupancy-ha/main/docs/integrationsplash.png" width="900">
 
@@ -32,7 +33,7 @@ Once set up, the integration's Options (a menu, reached the same way) let you tu
 
 ## Reported vs Real occupancy
 
-Each club gets four sensors.
+Each club gets seven sensors.
 
 **Reported Occupancy** is the number the Planet Fitness portal shows which is based on member checkins. Planet Fitness does not have any check out mechanism so PF relies on a static two hour timer to decrement the occupancy counter. This creates situations where members leave the gym after 45 mins but are considered still within the gym for another 1 hour 15 mins.
 
@@ -52,7 +53,9 @@ closely than the raw square metreage does.
 
 Since these categories are subjective, they're fully user-configurable: set them generally in the integration's Options, or override just one club (Options → "Override a club's threshold") if it consistently feels busier or quieter than the general setting suggests. Leave both fields blank on that per-club form to remove the override again.
 
-**Staff Status** provides an indication as to whether staff are in the gym or not. This is specifically important if you have a query or if you are a black card member who wishes to use the spa. You may wish to set up an automation based on this (eg. 30 minutes before) to ensure you can catch the last of the spa amenities before the staff leave for the day (important for weekends when staff leave earlier).
+**Staff Status** provides an indication as to whether staff are in the gym or not. This is specifically important if you have a query or if you are a black card member who wishes to use the spa.
+
+**Next Staffed** and **Next Unstaffed** are timestamp sensors alongside Staff Status, for exactly the automation use case above — a template pulling a time out of Staff Status's attributes works, but a timestamp sensor can be used directly as a trigger or a `before`/`after` condition. Next Staffed is when staff are next present, from however the club got there. Next Unstaffed is specifically the end of a staffed window (not the club closing for the night with staff already gone) — set an automation 30 minutes before it to catch the last of the spa amenities before staff leave (useful on weekends, when they tend to leave earlier).
 
 **Floor Area** is provied as a static figure, pulled from each club's website and is used to calculate density. Not configurable.
 
@@ -66,7 +69,7 @@ If a new club opens or an existing club closes, please raise an issue or pull re
 
 ## What you get
 
-Each discovered club is its own Device (Settings → Devices & Services → Planet Fitness AU Occupancy), grouping its five sensors under one card instead of a flat entity list. Since a device is created per club, first setup (or any time a new club appears) prompts Home Assistant's usual "N new devices found" review — worth it for the grouping.
+Each discovered club is its own Device (Settings → Devices & Services → Planet Fitness AU Occupancy), grouping its seven sensors under one card instead of a flat entity list. Since a device is created per club, first setup (or any time a new club appears) prompts Home Assistant's usual "N new devices found" review — worth it for the grouping.
 
 Per club:
 
@@ -75,12 +78,14 @@ Per club:
 | `sensor.<club>_reported_occupancy` | count | Attributes: address, limit, percent full |
 | `sensor.<club>_real_occupancy` | count | Attributes: raw count, reduction % |
 | `sensor.<club>_staffing` | `staffed` / `unstaffed` / `closed` | Attributes: next change, next state, today's and tomorrow's staffed windows |
+| `sensor.<club>_next_staffed` | timestamp | Next time the club becomes staffed, from any prior state |
+| `sensor.<club>_next_unstaffed` | timestamp | Next time a staffed window ends specifically (not the club closing) |
 | `sensor.<club>_floor_area` | m² | Diagnostic |
 | `sensor.<club>_busyness` | `quiet` / `busy` / `crowded` | Attributes: people/16m², m²/person, thresholds in force |
 
-Staffing follows the clock rather than the poll: it schedules its own update
-for the next boundary in that club's week, so it flips at 9am sharp instead of
-whenever the next poll lands.
+Staffing, Next Staffed and Next Unstaffed all follow the clock rather than
+the poll: each schedules its own update for the next moment its value would
+go stale, so they flip at 9am sharp instead of whenever the next poll lands.
 
 Clubs are discovered automatically on each poll; a club that disappears from a
 response (e.g. renamed) goes `unavailable` rather than being deleted, since the
