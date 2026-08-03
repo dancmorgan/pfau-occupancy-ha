@@ -10,8 +10,8 @@ Busyness = _density.Busyness
 measure_density = _density.measure_density
 
 # One person per 20 m2, then one per 10 m2 — the integration defaults.
-BUSY = 0.8
-CROWDED = 1.6
+BUSY = 1.8
+CROWDED = 3.6
 
 
 def measure(people: int, area: float = 1000):
@@ -32,7 +32,7 @@ def test_band_boundaries_are_inclusive() -> None:
 
 def test_reciprocal_is_reported() -> None:
     reading = measure(50)
-    assert reading.people_per_16sqm == 1.194
+    assert reading.people_per_36sqm == 2.6866
     assert reading.sqm_per_person == 13.4
 
 
@@ -46,7 +46,7 @@ def test_dead_space_is_subtracted_from_area() -> None:
 def test_empty_club_has_no_space_per_person() -> None:
     reading = measure(0)
     assert reading.band is Busyness.QUIET
-    assert reading.people_per_16sqm == 0
+    assert reading.people_per_36sqm == 0
     assert reading.sqm_per_person is None
 
 
@@ -66,5 +66,5 @@ def test_non_positive_area_is_rejected() -> None:
 
 
 def test_equal_thresholds_collapse_to_two_bands() -> None:
-    assert measure_density(67, 2000, 0.8, 0.8).band is Busyness.CROWDED
-    assert measure_density(66, 2000, 0.8, 0.8).band is Busyness.QUIET
+    assert measure_density(67, 2000, 1.8, 1.8).band is Busyness.CROWDED
+    assert measure_density(66, 2000, 1.8, 1.8).band is Busyness.QUIET

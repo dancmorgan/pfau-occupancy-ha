@@ -50,6 +50,8 @@ async def async_setup_entry(
                 *(PlanetFitnessReportedSensor(coordinator, key) for key in new_keys),
                 *(PlanetFitnessRealSensor(coordinator, key) for key in new_keys),
                 *(PlanetFitnessStaffingSensor(coordinator, key) for key in new_keys),
+                *(PlanetFitnessNextChangeSensor(coordinator, key) for key in new_keys),
+                *(PlanetFitnessNextStateSensor(coordinator, key) for key in new_keys),
                 *(PlanetFitnessNextStaffedSensor(coordinator, key) for key in new_keys),
                 *(
                     PlanetFitnessNextUnstaffedSensor(coordinator, key)
@@ -73,7 +75,7 @@ class PlanetFitnessClubSensorBase(
     disappears from a poll response (renamed, or temporarily dropped), `_club`
     resolves to None and `available` goes False rather than removing the entity.
 
-    Each club is its own Device, grouping its seven sensors under one card
+    Each club is its own Device, grouping its nine sensors under one card
     instead of a flat list — worth the onboarding friction of HA prompting to
     name/assign-area a new device per club on first setup. `has_entity_name`
     means each subclass's `_attr_name` is just the entity's own short name
@@ -183,13 +185,13 @@ class PlanetFitnessRealSensor(PlanetFitnessOccupancySensorBase):
 class PlanetFitnessScheduleSensorBase(PlanetFitnessClubSensorBase):
     """Shared behavior for sensors whose value depends on the wall clock, not the poll.
 
-    Staff Presence and the two Next Staffed/Unstaffed timestamps all derive
-    their value purely from the club's weekly schedule and the current time,
-    so none of them can rely on the coordinator's poll to know when to
-    update — a poll five minutes from now doesn't necessarily line up with
-    the next time the schedule actually changes. Instead each schedules its
-    own one-shot timer for the next moment its own value would go stale,
-    fires, re-renders, and reschedules for the moment after that.
+    Staff Presence, Next Change, Next State, and Next Staffed/Unstaffed all
+    derive their value purely from the club's weekly schedule and the
+    current time, so none of them can rely on the coordinator's poll to know
+    when to update — a poll five minutes from now doesn't necessarily line
+    up with the next time the schedule actually changes. Instead each
+    schedules its own one-shot timer for the next moment its own value would
+    go stale, fires, re-renders, and reschedules for the moment after that.
 
     Unavailable for clubs with no `open`/`staffed` hours in clubs.yaml, since
     guessing 24/7-and-never-staffed would be indistinguishable from a real
@@ -285,20 +287,71 @@ class PlanetFitnessStaffingSensor(PlanetFitnessScheduleSensorBase):
         if schedule is None:
             return {}
         now = self._now()
-        next_change = schedule.next_change(now)
         return {
-            "next_change": next_change,
-            "next_state": (
-                schedule.state_at(next_change).value
-                if next_change is not None
-                else None
-            ),
             "staffed_today": schedule.staffed_text_for(now.date()),
             "staffed_tomorrow": schedule.staffed_text_for(
                 (now + timedelta(days=1)).date()
             ),
             "timezone": str(self.coordinator.timezone(self._club_key)),
         }
+
+    def _next_wake(self) -> datetime | None:
+        schedule = self._schedule
+        return schedule.next_change(self._now()) if schedule else None
+
+
+class PlanetFitnessNextChangeSensor(PlanetFitnessScheduleSensorBase):
+    """When Staff Presence will next change, whatever it changes to.
+
+    A timestamp rather than an attribute on Staff Presence, same reasoning
+    as Next Staffed/Unstaffed — usable directly as an automation trigger or
+    condition. Unlike those two, this fires on *any* boundary (including a
+    club opening/closing), not just staffed <-> unstaffed transitions; pair
+    it with Next State to know what it's changing to.
+    """
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:clock-alert-outline"
+    _attr_name = "Next Change"
+
+    def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
+        super().__init__(coordinator, club_key)
+        self._attr_unique_id = f"{club_key}_next_change"
+
+    @property
+    def native_value(self) -> datetime | None:
+        schedule = self._schedule
+        return schedule.next_change(self._now()) if schedule else None
+
+    def _next_wake(self) -> datetime | None:
+        return self.native_value
+
+
+class PlanetFitnessNextStateSensor(PlanetFitnessScheduleSensorBase):
+    """What Staff Presence will become at the time Next Change reports.
+
+    Split out from Next Change rather than folded into it because the two
+    are different kinds of value (a timestamp vs. an enum) — one sensor
+    would have to pick one and demote the other back to an attribute.
+    """
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [state.value for state in Staffing]
+    _attr_translation_key = "staffing"
+    _attr_icon = "mdi:clock-alert-outline"
+    _attr_name = "Next State"
+
+    def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
+        super().__init__(coordinator, club_key)
+        self._attr_unique_id = f"{club_key}_next_state"
+
+    @property
+    def native_value(self) -> str | None:
+        schedule = self._schedule
+        if schedule is None:
+            return None
+        next_change = schedule.next_change(self._now())
+        return schedule.state_at(next_change).value if next_change is not None else None
 
     def _next_wake(self) -> datetime | None:
         schedule = self._schedule
@@ -391,7 +444,7 @@ class PlanetFitnessFloorAreaSensor(PlanetFitnessClubSensorBase):
 class PlanetFitnessBusynessSensor(PlanetFitnessClubSensorBase):
     """How crowded the club is: quiet, busy, or crowded. Different from occupancy and based on people per square meter as an extremely large club may hold 150 people but still be quiet, whereas a small club may have 20 people but feel shoulder to shoulder.
 
-    Estimated real occupancy per 16 square metres of effective floor area (4x4 metres around you after dead space subtracted — see density.py), banded by the thresholds from the integration options (globally, or overridden for this club — see coordinator.thresholds). Needs an `area_sqm` for the club, so it stays unavailable until one is set.
+    Estimated real occupancy per 36 square metres of effective floor area (a 6x6 metre square around you after dead space subtracted — see density.py), banded by the thresholds from the integration options (globally, or overridden for this club — see coordinator.thresholds). Needs an `area_sqm` for the club, so it stays unavailable until one is set.
     """
 
     _attr_device_class = SensorDeviceClass.ENUM
@@ -424,7 +477,7 @@ class PlanetFitnessBusynessSensor(PlanetFitnessClubSensorBase):
             return {}
         busy, crowded = self.coordinator.thresholds(self._club_key)
         return {
-            "people_per_16sqm": density.people_per_16sqm,
+            "people_per_36sqm": density.people_per_36sqm,
             "sqm_per_person": density.sqm_per_person,
             "people": density.people,
             "area_sqm": density.area_sqm,

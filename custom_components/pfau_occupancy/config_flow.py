@@ -182,19 +182,19 @@ def _percent_box(min_value: int, max_value: int) -> vol.All:
 
 
 def _density_box() -> vol.All:
-    """A number-box selector for a people-per-16-square-metre threshold.
+    """A number-box selector for a people-per-36-square-metre threshold.
 
     Fine steps because the useful range is small: one person per 20 m2 is
-    0.8, one per 10 m2 is 1.6.
+    1.8, one per 10 m2 is 3.6.
     """
     return vol.All(
         NumberSelector(
             NumberSelectorConfig(
                 min=0.01,
-                max=16,
+                max=36,
                 step=0.01,
                 mode=NumberSelectorMode.BOX,
-                unit_of_measurement="people/16m²",
+                unit_of_measurement="people/36m²",
             )
         ),
         vol.Coerce(float),
