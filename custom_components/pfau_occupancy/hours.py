@@ -12,6 +12,7 @@ plain pytest.
 """
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, tzinfo
 from enum import StrEnum
@@ -87,11 +88,49 @@ class ClubSchedule:
         happens for schedules that are constant (e.g. open 24/7, never
         staffed).
         """
-        current = self.state_at(moment)
-        for boundary in self._boundaries(moment):
-            if boundary > moment and self.state_at(boundary) != current:
-                return boundary
+        for _from, _to, at in self._transitions(moment):
+            return at
         return None
+
+    def next_staffed(self, moment: datetime) -> datetime | None:
+        """The next time the club becomes staffed, from any prior state.
+
+        For "set an alarm for when staff arrive" — doesn't matter whether the
+        club was unstaffed or closed immediately before.
+        """
+        for _from, to, at in self._transitions(moment):
+            if to is Staffing.STAFFED:
+                return at
+        return None
+
+    def next_unstaffed(self, moment: datetime) -> datetime | None:
+        """The next time the club goes from staffed to unstaffed, specifically.
+
+        Not "the next time it's no longer staffed" — a staffed -> closed
+        transition (the club closing for the night) doesn't count, only a
+        staffed window actually ending while the club stays open.
+        """
+        for frm, to, at in self._transitions(moment):
+            if frm is Staffing.STAFFED and to is Staffing.UNSTAFFED:
+                return at
+        return None
+
+    def _transitions(
+        self, moment: datetime
+    ) -> Iterator[tuple[Staffing, Staffing, datetime]]:
+        """Yield (from_state, to_state, at) for every real state change after `moment`, in order.
+
+        "Real" excludes span edges that don't actually change state_at() —
+        e.g. the seam between two back-to-back staffed windows.
+        """
+        previous = self.state_at(moment)
+        for boundary in self._boundaries(moment):
+            if boundary <= moment:
+                continue
+            current = self.state_at(boundary)
+            if current != previous:
+                yield previous, current, boundary
+                previous = current
 
     def staffed_text_for(self, day: date) -> list[str]:
         """Today's staffed windows as "HH:MM-HH:MM" strings, for attributes."""
