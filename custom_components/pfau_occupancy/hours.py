@@ -92,26 +92,16 @@ class ClubSchedule:
             return at
         return None
 
-    def next_staffed(self, moment: datetime) -> datetime | None:
-        """The next time the club becomes staffed, from any prior state.
+    def next_staffing_toggle(self, moment: datetime) -> datetime | None:
+        """The next time the club flips specifically staffed <-> unstaffed.
 
-        For "set an alarm for when staff arrive" — doesn't matter whether the
-        club was unstaffed or closed immediately before.
-        """
-        for _from, to, at in self._transitions(moment):
-            if to is Staffing.STAFFED:
-                return at
-        return None
-
-    def next_unstaffed(self, moment: datetime) -> datetime | None:
-        """The next time the club goes from staffed to unstaffed, specifically.
-
-        Not "the next time it's no longer staffed" — a staffed -> closed
-        transition (the club closing for the night) doesn't count, only a
-        staffed window actually ending while the club stays open.
+        Not "the next time Staff Status changes" — a transition through
+        CLOSED (closing for the night, or opening before staff arrive)
+        doesn't count. Only a direct staffed->unstaffed or unstaffed->staffed
+        move does, in either direction.
         """
         for frm, to, at in self._transitions(moment):
-            if frm is Staffing.STAFFED and to is Staffing.UNSTAFFED:
+            if {frm, to} == {Staffing.STAFFED, Staffing.UNSTAFFED}:
                 return at
         return None
 

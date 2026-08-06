@@ -50,11 +50,8 @@ async def async_setup_entry(
                 *(PlanetFitnessReportedSensor(coordinator, key) for key in new_keys),
                 *(PlanetFitnessRealSensor(coordinator, key) for key in new_keys),
                 *(PlanetFitnessStaffingSensor(coordinator, key) for key in new_keys),
-                *(PlanetFitnessNextChangeSensor(coordinator, key) for key in new_keys),
-                *(PlanetFitnessNextStateSensor(coordinator, key) for key in new_keys),
-                *(PlanetFitnessNextStaffedSensor(coordinator, key) for key in new_keys),
                 *(
-                    PlanetFitnessNextUnstaffedSensor(coordinator, key)
+                    PlanetFitnessNextStaffingChangeSensor(coordinator, key)
                     for key in new_keys
                 ),
                 *(PlanetFitnessFloorAreaSensor(coordinator, key) for key in new_keys),
@@ -75,7 +72,7 @@ class PlanetFitnessClubSensorBase(
     disappears from a poll response (renamed, or temporarily dropped), `_club`
     resolves to None and `available` goes False rather than removing the entity.
 
-    Each club is its own Device, grouping its nine sensors under one card
+    Each club is its own Device, grouping its six sensors under one card
     instead of a flat list — worth the onboarding friction of HA prompting to
     name/assign-area a new device per club on first setup. `has_entity_name`
     means each subclass's `_attr_name` is just the entity's own short name
@@ -185,13 +182,13 @@ class PlanetFitnessRealSensor(PlanetFitnessOccupancySensorBase):
 class PlanetFitnessScheduleSensorBase(PlanetFitnessClubSensorBase):
     """Shared behavior for sensors whose value depends on the wall clock, not the poll.
 
-    Staff Presence, Next Change, Next State, and Next Staffed/Unstaffed all
-    derive their value purely from the club's weekly schedule and the
-    current time, so none of them can rely on the coordinator's poll to know
-    when to update — a poll five minutes from now doesn't necessarily line
-    up with the next time the schedule actually changes. Instead each
-    schedules its own one-shot timer for the next moment its own value would
-    go stale, fires, re-renders, and reschedules for the moment after that.
+    Staffing Status and Next Staff Status Change both derive their value
+    purely from the club's weekly schedule and the current time, so neither
+    can rely on the coordinator's poll to know when to update — a poll five
+    minutes from now doesn't necessarily line up with the next time the
+    schedule actually changes. Instead each schedules its own one-shot timer
+    for the next moment its own value would go stale, fires, re-renders, and
+    reschedules for the moment after that.
 
     Unavailable for clubs with no `open`/`staffed` hours in clubs.yaml, since
     guessing 24/7-and-never-staffed would be indistinguishable from a real
@@ -270,7 +267,7 @@ class PlanetFitnessStaffingSensor(PlanetFitnessScheduleSensorBase):
     _attr_options = [state.value for state in Staffing]
     _attr_translation_key = "staffing"
     _attr_icon = "mdi:clock-outline"
-    _attr_name = "Staff Presence"
+    _attr_name = "Staffing Status"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
@@ -300,111 +297,32 @@ class PlanetFitnessStaffingSensor(PlanetFitnessScheduleSensorBase):
         return schedule.next_change(self._now()) if schedule else None
 
 
-class PlanetFitnessNextChangeSensor(PlanetFitnessScheduleSensorBase):
-    """When Staff Presence will next change, whatever it changes to.
+class PlanetFitnessNextStaffingChangeSensor(PlanetFitnessScheduleSensorBase):
+    """When Staffing Status will next flip specifically staffed <-> unstaffed.
 
-    A timestamp rather than an attribute on Staff Presence, same reasoning
-    as Next Staffed/Unstaffed — usable directly as an automation trigger or
-    condition. Unlike those two, this fires on *any* boundary (including a
-    club opening/closing), not just staffed <-> unstaffed transitions; pair
-    it with Next State to know what it's changing to.
+    A timestamp rather than an attribute on Staffing Status, so it can be
+    used directly as an automation trigger or a `before`/`after` condition —
+    reading a timestamp out of another entity's attributes needs a template
+    sensor in between, a timestamp entity doesn't.
+
+    Not "the next time Staffing Status changes to anything" — a transition
+    through closed (closing for the night, or opening before staff arrive)
+    doesn't count, only a direct staffed->unstaffed or unstaffed->staffed
+    move does, in either direction. See ClubSchedule.next_staffing_toggle.
     """
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:clock-alert-outline"
-    _attr_name = "Next Change"
+    _attr_name = "Next Staff Status Change"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
-        self._attr_unique_id = f"{club_key}_next_change"
+        self._attr_unique_id = f"{club_key}_next_staffing_change"
 
     @property
     def native_value(self) -> datetime | None:
         schedule = self._schedule
-        return schedule.next_change(self._now()) if schedule else None
-
-    def _next_wake(self) -> datetime | None:
-        return self.native_value
-
-
-class PlanetFitnessNextStateSensor(PlanetFitnessScheduleSensorBase):
-    """What Staff Presence will become at the time Next Change reports.
-
-    Split out from Next Change rather than folded into it because the two
-    are different kinds of value (a timestamp vs. an enum) — one sensor
-    would have to pick one and demote the other back to an attribute.
-    """
-
-    _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = [state.value for state in Staffing]
-    _attr_translation_key = "staffing"
-    _attr_icon = "mdi:clock-alert-outline"
-    _attr_name = "Next State"
-
-    def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
-        super().__init__(coordinator, club_key)
-        self._attr_unique_id = f"{club_key}_next_state"
-
-    @property
-    def native_value(self) -> str | None:
-        schedule = self._schedule
-        if schedule is None:
-            return None
-        next_change = schedule.next_change(self._now())
-        return schedule.state_at(next_change).value if next_change is not None else None
-
-    def _next_wake(self) -> datetime | None:
-        schedule = self._schedule
-        return schedule.next_change(self._now()) if schedule else None
-
-
-class PlanetFitnessNextStaffedSensor(PlanetFitnessScheduleSensorBase):
-    """When the club next becomes staffed, for automations/alarms.
-
-    A timestamp rather than an attribute on Staff Presence specifically so
-    it can be used directly as an automation trigger or condition — reading
-    a timestamp out of another entity's attributes needs a template sensor
-    in between, a timestamp entity doesn't.
-    """
-
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _attr_icon = "mdi:clock-start"
-    _attr_name = "Next Staffed"
-
-    def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
-        super().__init__(coordinator, club_key)
-        self._attr_unique_id = f"{club_key}_next_staffed"
-
-    @property
-    def native_value(self) -> datetime | None:
-        schedule = self._schedule
-        return schedule.next_staffed(self._now()) if schedule else None
-
-    def _next_wake(self) -> datetime | None:
-        return self.native_value
-
-
-class PlanetFitnessNextUnstaffedSensor(PlanetFitnessScheduleSensorBase):
-    """When the club's current/next staffed window ends, for automations/alarms.
-
-    Specifically a staffed -> unstaffed transition, not staffed -> closed —
-    the club closing for the night isn't "going unstaffed" in the sense
-    someone setting an alarm against this sensor cares about. See
-    ClubSchedule.next_unstaffed.
-    """
-
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _attr_icon = "mdi:clock-end"
-    _attr_name = "Next Unstaffed"
-
-    def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
-        super().__init__(coordinator, club_key)
-        self._attr_unique_id = f"{club_key}_next_unstaffed"
-
-    @property
-    def native_value(self) -> datetime | None:
-        schedule = self._schedule
-        return schedule.next_unstaffed(self._now()) if schedule else None
+        return schedule.next_staffing_toggle(self._now()) if schedule else None
 
     def _next_wake(self) -> datetime | None:
         return self.native_value
