@@ -44,7 +44,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
 )
-from .density import DensityReading, measure_density
+from .density import DensityReading, measure_density, people_at_threshold
 from .estimator import ClubEstimate, estimate_occupancy
 
 _LOGGER = logging.getLogger(__name__)
@@ -240,6 +240,21 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
         busy = override[CONF_BUSY_THRESHOLD]
         crowded = override[CONF_CROWDED_THRESHOLD]
         return busy, max(busy, crowded)
+
+    def headcount_thresholds(self, club_key: str) -> tuple[int, int] | None:
+        """This club's (busy, crowded) thresholds as headcounts, not densities.
+
+        None for a club with no floor area, since people/36m2 can't be turned
+        back into people without one. Ordered, because thresholds() is.
+        """
+        profile = self.profiles.get(club_key)
+        if profile is None or profile.area_sqm is None:
+            return None
+        busy, crowded = self.thresholds(club_key)
+        return (
+            people_at_threshold(profile.area_sqm, busy),
+            people_at_threshold(profile.area_sqm, crowded),
+        )
 
     async def _async_update_data(self) -> dict[str, Club]:
         try:

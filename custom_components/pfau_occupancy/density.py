@@ -23,6 +23,7 @@ plain pytest.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -39,6 +40,34 @@ class Busyness(StrEnum):
     QUIET = "quiet"
     BUSY = "busy"
     CROWDED = "crowded"
+
+
+def effective_area(area_sqm: float) -> float:
+    """The part of a club's floor a member could actually stand in.
+
+    The configured area_sqm is gross gym floor; a fixed share of it is
+    walkways, corridors and the footprint of the racks and machines
+    themselves. Density is measured against what's left.
+    """
+    return area_sqm * (1 - _DEAD_SPACE_FRACTION)
+
+
+def people_at_threshold(area_sqm: float, threshold: float) -> int:
+    """The smallest headcount that reaches `threshold` in a club this size.
+
+    The inverse of measure_density's banding: pass it the busy threshold and
+    you get the number of people at which that club tips from quiet into
+    busy. What a given people/36m2 figure means on the ground depends
+    entirely on the club, which is the whole reason this is worth surfacing —
+    the same threshold is 45 people in one club and 75 in another.
+    """
+    if area_sqm <= 0:
+        raise ValueError(f"area_sqm must be positive, got {area_sqm}")
+    exact = threshold * effective_area(area_sqm) / _DENSITY_UNIT_SQM
+    # Banding is `density >= threshold`, so round up to the first headcount
+    # that qualifies — but shed float noise first, or a threshold landing
+    # exactly on an integer (67.00000000000001) would skip a whole person.
+    return max(0, math.ceil(round(exact, 9)))
 
 
 @dataclass(frozen=True)
@@ -71,7 +100,7 @@ def measure_density(
         raise ValueError(f"area_sqm must be positive, got {area_sqm}")
     people = max(0, people)
 
-    effective_area_sqm = area_sqm * (1 - _DEAD_SPACE_FRACTION)
+    effective_area_sqm = effective_area(area_sqm)
     density = people / effective_area_sqm * _DENSITY_UNIT_SQM
     if density >= crowded_threshold:
         band = Busyness.CROWDED

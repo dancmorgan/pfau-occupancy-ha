@@ -33,7 +33,7 @@ Once set up, the integration's Options (a menu, reached the same way) let you tu
 
 ## Reported vs Real occupancy
 
-Each club gets six sensors.
+Each club gets eight sensors.
 
 **Reported Occupancy** is the number the Planet Fitness portal shows which is based on member checkins. Planet Fitness does not have any check out mechanism so PF relies on a static two hour timer to decrement the occupancy counter. This creates situations where members leave the gym after 45 mins but are considered still within the gym for another 1 hour 15 mins.
 
@@ -54,9 +54,11 @@ Since these categories are subjective, they're fully user-configurable: set them
 
 **Floor Area** is provied as a static figure, pulled from each club's website and is used to calculate density. Not configurable.
 
+**Busy Threshold** and **Crowded Threshold** simply provide the numeric values of the club's calculated busy and crowded thresholds.
+
 # Club List
 
-The portal's occupancy endpoint returns a club's name, address, current count and capacity limit - and nothing else. Opening hours and floor size aren't in it, or anywhere else in the API, so they come from [`clubs.yaml`](custom_components/pfau_occupancy/clubs.yaml) - pre-seeded with every AU club at the time of publishing. Until a club has an entry there, its Staffing, Floor Area and Busyness sensors report `unavailable`; the two occupancy sensors don't depend on it and work regardless.
+The portal's occupancy endpoint returns a club's name, address, current count and capacity limit - and nothing else. Opening hours and floor size aren't in it, or anywhere else in the API, so they come from [`clubs.yaml`](custom_components/pfau_occupancy/clubs.yaml) - pre-seeded with every AU club at the time of publishing. Until a club has an entry there, its Staffing, Floor Area, Busyness and threshold sensors report `unavailable`; the two occupancy sensors don't depend on it and work regardless.
 
 If a new club opens or an existing club closes, please raise an issue or pull request for inclusion.
 
@@ -64,7 +66,7 @@ If a new club opens or an existing club closes, please raise an issue or pull re
 
 ## What you get
 
-Each discovered club is its own Device (Settings → Devices & Services → Planet Fitness AU Occupancy), grouping its six sensors under one card instead of a flat entity list. Since a device is created per club, first setup (or any time a new club appears) prompts Home Assistant's usual "N new devices found" review - worth it for the grouping.
+Each discovered club is its own Device (Settings → Devices & Services → Planet Fitness AU Occupancy), grouping its eight sensors under one card instead of a flat entity list. Since a device is created per club, first setup (or any time a new club appears) prompts Home Assistant's usual "N new devices found" review - worth it for the grouping.
 
 Per club:
 
@@ -75,7 +77,9 @@ Per club:
 | `sensor.<club>_staffing` | `staffed` / `unstaffed` / `closed` | Attributes: today's and tomorrow's staffed windows, timezone |
 | `sensor.<club>_next_staffing_change` | timestamp | Next staffed <-> unstaffed flip, either direction (opening/closing doesn't count) |
 | `sensor.<club>_floor_area` | m² | Diagnostic |
-| `sensor.<club>_busyness` | `quiet` / `busy` / `crowded` | Attributes: people/36m², m²/person, thresholds in force |
+| `sensor.<club>_busyness` | `quiet` / `busy` / `crowded` | Attributes: people/36m², m²/person, thresholds in force (as densities and as headcounts) |
+| `sensor.<club>_busy_threshold` | count | Diagnostic. Headcount at which this club tips into `busy` |
+| `sensor.<club>_crowded_threshold` | count | Diagnostic. Headcount at which this club tips into `crowded` |
 
 Staffing Status and Next Staff Status Change both follow the clock rather
 than the poll: each schedules its own update for the next moment its value

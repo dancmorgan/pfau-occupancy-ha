@@ -21,7 +21,7 @@ from pfau_occupancy import Club
 from .club_data import ClubProfile
 from .const import DOMAIN
 from .coordinator import PlanetFitnessConfigEntry, PlanetFitnessCoordinator
-from .density import Busyness, DensityReading
+from .density import Busyness, DensityReading, effective_area
 from .estimator import ClubEstimate
 from .hours import ClubSchedule, Staffing
 
@@ -56,6 +56,11 @@ async def async_setup_entry(
                 ),
                 *(PlanetFitnessFloorAreaSensor(coordinator, key) for key in new_keys),
                 *(PlanetFitnessBusynessSensor(coordinator, key) for key in new_keys),
+                *(
+                    PlanetFitnessBandThresholdSensor(coordinator, key, band)
+                    for key in new_keys
+                    for band in (Busyness.BUSY, Busyness.CROWDED)
+                ),
             ]
         )
 
@@ -72,7 +77,7 @@ class PlanetFitnessClubSensorBase(
     disappears from a poll response (renamed, or temporarily dropped), `_club`
     resolves to None and `available` goes False rather than removing the entity.
 
-    Each club is its own Device, grouping its six sensors under one card
+    Each club is its own Device, grouping its eight sensors under one card
     instead of a flat list — worth the onboarding friction of HA prompting to
     name/assign-area a new device per club on first setup. `has_entity_name`
     means each subclass's `_attr_name` is just the entity's own short name
@@ -394,7 +399,7 @@ class PlanetFitnessBusynessSensor(PlanetFitnessClubSensorBase):
         if density is None:
             return {}
         busy, crowded = self.coordinator.thresholds(self._club_key)
-        return {
+        attributes: dict[str, object] = {
             "people_per_36sqm": density.people_per_36sqm,
             "sqm_per_person": density.sqm_per_person,
             "people": density.people,
@@ -402,4 +407,83 @@ class PlanetFitnessBusynessSensor(PlanetFitnessClubSensorBase):
             "effective_area_sqm": density.effective_area_sqm,
             "busy_threshold": busy,
             "crowded_threshold": crowded,
+        }
+        # The same thresholds as headcounts, which is what the bands actually
+        # mean at this club. Also their own diagnostic sensors, but repeated
+        # here so the band you're looking at explains itself.
+        headcounts = self.coordinator.headcount_thresholds(self._club_key)
+        if headcounts is not None:
+            busy_at, crowded_at = headcounts
+            attributes["busy_at_people"] = busy_at
+            attributes["crowded_at_people"] = crowded_at
+        return attributes
+
+
+class PlanetFitnessBandThresholdSensor(PlanetFitnessClubSensorBase):
+    """How many people it takes to tip this club into `busy` or `crowded`.
+
+    The Busyness thresholds are set in people per 36m2, which is deliberately
+    club-agnostic — but that makes them hard to sanity-check against a club
+    you know. This resolves one back into a headcount using that club's own
+    floor area, so "busy" stops being an abstraction and becomes "about 75
+    people in Morayfield".
+
+    Diagnostic rather than a measurement: it's derived from settings and a
+    static floor area, so it only moves when you retune a threshold or the
+    club's area is corrected in clubs.yaml.
+    """
+
+    _attr_native_unit_of_measurement = "people"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:account-multiple-check-outline"
+
+    def __init__(
+        self,
+        coordinator: PlanetFitnessCoordinator,
+        club_key: str,
+        band: Busyness,
+    ) -> None:
+        super().__init__(coordinator, club_key)
+        self._band = band
+        self._attr_unique_id = f"{club_key}_{band.value}_threshold"
+        self._attr_name = f"{band.value.title()} Threshold"
+
+    @property
+    def _headcounts(self) -> tuple[int, int] | None:
+        return self.coordinator.headcount_thresholds(self._club_key)
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._headcounts is not None
+
+    @property
+    def native_value(self) -> int | None:
+        headcounts = self._headcounts
+        if headcounts is None:
+            return None
+        busy_at, crowded_at = headcounts
+        return busy_at if self._band is Busyness.BUSY else crowded_at
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        headcounts = self._headcounts
+        profile = self._profile
+        if headcounts is None or profile is None or profile.area_sqm is None:
+            return {}
+        busy, crowded = self.coordinator.thresholds(self._club_key)
+        busy_at, crowded_at = headcounts
+        return {
+            "band": self._band.value,
+            # The density setting this headcount was resolved from, and the
+            # area it was resolved against.
+            "people_per_36sqm_threshold": (
+                busy if self._band is Busyness.BUSY else crowded
+            ),
+            "area_sqm": profile.area_sqm,
+            "effective_area_sqm": round(effective_area(profile.area_sqm), 1),
+            # The full picture, so either sensor answers "what do the bands
+            # mean here?" without cross-referencing the other.
+            "quiet_below_people": busy_at,
+            "busy_at_people": busy_at,
+            "crowded_at_people": crowded_at,
         }
