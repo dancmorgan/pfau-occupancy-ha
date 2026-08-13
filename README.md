@@ -31,15 +31,31 @@ Once set up, the integration's Options (a menu, reached the same way) let you tu
 
 <img src="https://raw.githubusercontent.com/dancmorgan/pfau-occupancy-ha/main/docs/overrideclubnumbers.png" width="400">
 
-## Reported vs Real occupancy
+# What you get
 
-Each club gets eight sensors.
+Each discovered club is its own Device (Settings → Devices & Services → Planet Fitness AU Occupancy), grouping its eight sensors under one card instead of a flat entity list. Since a device is created per club, first setup (or any time a new club appears) prompts Home Assistant's usual "N new devices found" review - worth it for the grouping.
 
-**Reported Occupancy** is the number the Planet Fitness portal shows which is based on member checkins. Planet Fitness does not have any check out mechanism so PF relies on a static two hour timer to decrement the occupancy counter. This creates situations where members leave the gym after 45 mins but are considered still within the gym for another 1 hour 15 mins.
+Per club:
+## Sensors
+| Entity | Type | Notes |
+| --- | --- | --- |
+| Reported Occupancy | number | the number the Planet Fitness portal shows which is based on member checkins. Planet Fitness does not have any check out mechanism so PF relies on a static two hour timer to decrement the occupancy counter. This creates situations where members leave the gym after 45 mins but are considered still within the gym for another 1 hour 15 mins. |
+| Real Occupancy | number | corrects this based on real counts and observations over time (albeit at a specific gym. Yours may differ and so the reduction % is provided as a configurable option). The results of the real occupancy counts have identified that the occupancy counter is on average 210% overstating gym occupancy and so the default reduction of the real occupancy sensor has been set to 50%. Its worth noting that given the way occupancy is reported via the API, theres very little ability to do authentic time tracking or analysis or heuristic based results. |
+| Busyness | category | human friendly category displaying "how the gym feels" (eg. Quiet, Busy, and Crowded) based on density configurations measured against 36m2 square (6x6 meters around you). Defaults are Quiet = less than 1.8 people, Busy more than 1.8 people, Crowded more than 2.5 people. |
+| Staffing Status | boolean | provides an indication as to whether staff are in the gym or not. This is specifically important if you have a query or if you are a black card member who wishes to use the spa. |
+| Next Staff Status Change | timestamp | describes the timestamp when staff will either arrive or leave. Set an automation 30 minutes before it to catch the last of the black card spa amenities before staff leave (useful on weekends, when they tend to leave earlier). |
+## Diagnostic
+| Entity | Type | Notes |
+| --- | --- | --- |
+| Floor Area | number | A simple passthrough value that shows you the club's square meter area as reported by the Planet Fitness website. It is raw and not altered (busyness dead-space subtraction is not applied.) |
+| Busy Threshold | number | A simple calculated number based on specified thresholds on when the gym is considered busy (either based on default values or your own) |
+| Crowded Threshold | number | A simple calculated number based on specified thresholds on when the gym is considered crowded (either based on default values or your own) |
 
-**Real Occupancy** corrects this based on real counts and observations over time (albeit at a specific gym. Yours may differ and so the reduction % is provided as a configurable option). The results of the real occupancy counts have identified that the occupancy counter is on average 210% overstating gym occupancy and so the default reduction of the real occupancy sensor has been set to 50%. Its worth noting that given the way occupancy is reported via the API, theres very little ability to do authentic time tracking or analysis or heuristic based results.
+Clubs are discovered automatically on each poll; a club that disappears from a response (e.g. renamed) goes `unavailable` rather than being deleted, since the API exposes no stable club ID other than the (slugified) name.
 
-**Busyness** provides a more useful metric than Real or Reported Occupancy as it divides **Real Occupancy** by `area_sqm` and bands the result to give you a more useful "does the gym feel busy right now" category. Density rather than occupancy is what makes clubs comparable - 60 people in a 1,600 m²
+## Busyness and Density
+
+Busyness provides a more useful metric than Real or Reported Occupancy as it divides **Real Occupancy** by `area_sqm` and bands the result to give you a more useful "does the gym feel busy right now" category. Density rather than occupancy is what makes clubs comparable - 60 people in a 1,600 m²
 warehouse is quiet, the same 60 in a 400 m² studio is extremely busy.
 
 Before dividing, 33% of `area_sqm` is subtracted as dead space - walkways, corridors, and the footprint of the racks and machines themselves, none of which is room a member can actually stand in. 
@@ -48,47 +64,13 @@ Before dividing, 33% of `area_sqm` is subtracted as dead space - walkways, corri
 
 Since these categories are subjective, they're fully user-configurable: set them generally in the integration's Options, or override just one club (Options → "Override a club's threshold") if it consistently feels busier or quieter than the general setting suggests. Leave both fields blank on that per-club form to remove the override again.
 
-**Staffing Status** provides an indication as to whether staff are in the gym or not. This is specifically important if you have a query or if you are a black card member who wishes to use the spa.
-
-**Next Staff Status Change** is its own sensor rather than a Staffing Status attribute, so it can be used directly as an automation trigger or a `before`/`after` condition - pulling a timestamp out of another entity's attributes needs a template sensor in between, a dedicated sensor doesn't. It's specifically the next staffed -> unstaffed or unstaffed -> staffed flip, in either direction - the club opening or closing for the day doesn't count, only staff actually arriving or leaving does. Set an automation 30 minutes before it to catch the last of the spa amenities before staff leave (useful on weekends, when they tend to leave earlier).
-
-**Floor Area** is provied as a static figure, pulled from each club's website and is used to calculate density. Not configurable.
-
-**Busy Threshold** and **Crowded Threshold** simply provide the numeric values of the club's calculated busy and crowded thresholds.
-
-# Club List
+## Club List
 
 The portal's occupancy endpoint returns a club's name, address, current count and capacity limit - and nothing else. Opening hours and floor size aren't in it, or anywhere else in the API, so they come from [`clubs.yaml`](custom_components/pfau_occupancy/clubs.yaml) - pre-seeded with every AU club at the time of publishing. Until a club has an entry there, its Staffing, Floor Area, Busyness and threshold sensors report `unavailable`; the two occupancy sensors don't depend on it and work regardless.
 
 If a new club opens or an existing club closes, please raise an issue or pull request for inclusion.
 
 `clubs.yaml` is **refetched from this repo** by the running integration on restart and every 24 hours, so a correction or a newly-added club reaches everyone without waiting for the next release. If GitHub is unreachable when the integration starts, it falls back to the last successfully fetched copy (cached in your Home Assistant config directory), and if there's no cache yet either, to whatever version shipped with your installed release.
-
-## What you get
-
-Each discovered club is its own Device (Settings → Devices & Services → Planet Fitness AU Occupancy), grouping its eight sensors under one card instead of a flat entity list. Since a device is created per club, first setup (or any time a new club appears) prompts Home Assistant's usual "N new devices found" review - worth it for the grouping.
-
-Per club:
-
-| Entity | State | Notes |
-| --- | --- | --- |
-| `sensor.<club>_reported_occupancy` | count | Attributes: address, limit, percent full |
-| `sensor.<club>_real_occupancy` | count | Attributes: raw count, reduction % |
-| `sensor.<club>_staffing` | `staffed` / `unstaffed` / `closed` | Attributes: today's and tomorrow's staffed windows, timezone |
-| `sensor.<club>_next_staffing_change` | timestamp | Next staffed <-> unstaffed flip, either direction (opening/closing doesn't count) |
-| `sensor.<club>_floor_area` | m² | Diagnostic |
-| `sensor.<club>_busyness` | `quiet` / `busy` / `crowded` | Attributes: people/36m², m²/person, thresholds in force (as densities and as headcounts) |
-| `sensor.<club>_busy_threshold` | count | Diagnostic. Headcount at which this club tips into `busy` |
-| `sensor.<club>_crowded_threshold` | count | Diagnostic. Headcount at which this club tips into `crowded` |
-
-Staffing Status and Next Staff Status Change both follow the clock rather
-than the poll: each schedules its own update for the next moment its value
-would go stale, so they flip at 9am sharp instead of whenever the next poll
-lands.
-
-Clubs are discovered automatically on each poll; a club that disappears from a
-response (e.g. renamed) goes `unavailable` rather than being deleted, since the
-API exposes no stable club ID other than the (slugified) name.
 
 ## Disclaimer
 
