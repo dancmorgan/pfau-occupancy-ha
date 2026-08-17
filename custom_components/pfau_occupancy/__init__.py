@@ -10,7 +10,7 @@ from .coordinator import PlanetFitnessConfigEntry, PlanetFitnessCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["sensor"]
+PLATFORMS = ["binary_sensor", "sensor"]
 
 # unique_id suffixes for sensors a past release created that this one no
 # longer does. Cleaned up on every setup so an upgrading user isn't left with

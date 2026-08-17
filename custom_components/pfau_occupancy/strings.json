@@ -35,12 +35,13 @@
         }
       },
       "general": {
-        "description": "Polling interval, the occupancy reduction, and the crowding thresholds. The portal's reported count overstates real occupancy, so the Real Occupancy sensor reduces it by the reduction percentage. Busyness compares that estimate against each club's floor area: 1.8 people/36m² is one person per 20 m², 3.6 is one per 10 m². Floor area and staffed hours are set per club in clubs.yaml and are not user-configurable.",
+        "description": "Polling interval, the occupancy reduction, and the crowding thresholds. The portal's reported count overstates real occupancy, so the Real Occupancy sensor reduces it by the reduction percentage. Busyness compares that estimate against each club's floor area: 1.8 people/36m² is one person per 20 m², 3.6 is one per 10 m². Floor area and staffed hours are set per club in clubs.yaml and are not user-configurable. The Occupancy Trend window is how far back the busier/quieter line is fitted: shorter reacts faster but is noisier, longer is steadier but lags. It is widened automatically if it would hold fewer than four polls.",
         "data": {
           "scan_interval": "Scan interval (minutes)",
           "reduction_percent": "Occupancy reduction (%)",
           "busy_threshold": "Busy at or above (people/36m²)",
-          "crowded_threshold": "Crowded at or above (people/36m²)"
+          "crowded_threshold": "Crowded at or above (people/36m²)",
+          "trend_window_minutes": "Occupancy Trend window (minutes)"
         }
       },
       "club_thresholds": {
@@ -79,6 +80,14 @@
           "quiet": "Quiet",
           "busy": "Busy",
           "crowded": "Crowded"
+        }
+      }
+    },
+    "binary_sensor": {
+      "occupancy_trend": {
+        "state": {
+          "on": "Getting Busier",
+          "off": "Getting Quieter"
         }
       }
     }

@@ -10,18 +10,13 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import EntityCategory
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_point_in_time
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from pfau_occupancy import Club
-
-from .club_data import ClubProfile
-from .const import DOMAIN
 from .coordinator import PlanetFitnessConfigEntry, PlanetFitnessCoordinator
 from .density import Busyness, DensityReading, effective_area
+from .entity import PlanetFitnessClubEntity
 from .estimator import ClubEstimate
 from .hours import ClubSchedule, Staffing
 
@@ -68,45 +63,12 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(_add_new_clubs))
 
 
-class PlanetFitnessClubSensorBase(
-    CoordinatorEntity[PlanetFitnessCoordinator], SensorEntity
-):
+class PlanetFitnessClubSensorBase(PlanetFitnessClubEntity, SensorEntity):
     """Shared behavior for the per-club sensors.
 
-    Identity is the slugified club name (the API exposes no club ID). If a club
-    disappears from a poll response (renamed, or temporarily dropped), `_club`
-    resolves to None and `available` goes False rather than removing the entity.
-
-    Each club is its own Device, grouping its eight sensors under one card
-    instead of a flat list — worth the onboarding friction of HA prompting to
-    name/assign-area a new device per club on first setup. `has_entity_name`
-    means each subclass's `_attr_name` is just the entity's own short name
-    ("Reported Occupancy"); the device name ("Morayfield") is prepended by
-    the frontend.
+    Identity, device grouping and availability all come from
+    PlanetFitnessClubEntity, which the binary sensor platform shares.
     """
-
-    _attr_has_entity_name = True
-
-    def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
-        super().__init__(coordinator)
-        self._club_key = club_key
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, club_key)},
-            name=coordinator.data[club_key].name.title(),
-            manufacturer="Planet Fitness Australia",
-        )
-
-    @property
-    def _club(self) -> Club | None:
-        return self.coordinator.data.get(self._club_key)
-
-    @property
-    def _profile(self) -> ClubProfile | None:
-        return self.coordinator.profile(self._club_key)
-
-    @property
-    def available(self) -> bool:
-        return super().available and self._club is not None
 
 
 class PlanetFitnessOccupancySensorBase(PlanetFitnessClubSensorBase):

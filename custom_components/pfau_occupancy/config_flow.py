@@ -34,10 +34,12 @@ from .const import (
     CONF_CLUB_THRESHOLDS,
     CONF_CROWDED_THRESHOLD,
     CONF_REDUCTION_PERCENT,
+    CONF_TREND_WINDOW_MINUTES,
     DEFAULT_BUSY_THRESHOLD,
     DEFAULT_CROWDED_THRESHOLD,
     DEFAULT_REDUCTION_PERCENT,
     DEFAULT_SCAN_INTERVAL_MINUTES,
+    DEFAULT_TREND_WINDOW_MINUTES,
     DOMAIN,
 )
 
@@ -264,6 +266,12 @@ class PlanetFitnessOptionsFlow(OptionsFlow):
                         CONF_CROWDED_THRESHOLD, DEFAULT_CROWDED_THRESHOLD
                     ),
                 ): _density_box(),
+                vol.Required(
+                    CONF_TREND_WINDOW_MINUTES,
+                    default=options.get(
+                        CONF_TREND_WINDOW_MINUTES, DEFAULT_TREND_WINDOW_MINUTES
+                    ),
+                ): _minutes_box(5, 240),
             }
         )
         return self.async_show_form(

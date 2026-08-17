@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
 
@@ -38,14 +39,19 @@ from .const import (
     CONF_CLUB_THRESHOLDS,
     CONF_CROWDED_THRESHOLD,
     CONF_REDUCTION_PERCENT,
+    CONF_TREND_WINDOW_MINUTES,
     DEFAULT_BUSY_THRESHOLD,
     DEFAULT_CROWDED_THRESHOLD,
     DEFAULT_REDUCTION_PERCENT,
     DEFAULT_SCAN_INTERVAL_MINUTES,
+    DEFAULT_TREND_WINDOW_MINUTES,
     DOMAIN,
+    TREND_MIN_GRADIENT,
+    TREND_MIN_SAMPLES_IN_WINDOW,
 )
 from .density import DensityReading, measure_density, people_at_threshold
 from .estimator import ClubEstimate, estimate_occupancy
+from .trend import TrendReading, TrendSample, measure_trend, within_window
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,8 +102,22 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
         self.crowded_threshold = float(
             entry.options.get(CONF_CROWDED_THRESHOLD, DEFAULT_CROWDED_THRESHOLD)
         )
+        # The configured window, but never narrower than several polls —
+        # a 60-minute scan interval with a 15-minute window would otherwise
+        # age every sample out before the next one landed.
+        self.trend_window_minutes = max(
+            int(
+                entry.options.get(
+                    CONF_TREND_WINDOW_MINUTES, DEFAULT_TREND_WINDOW_MINUTES
+                )
+            ),
+            scan_minutes * TREND_MIN_SAMPLES_IN_WINDOW,
+        )
+        self.trend_window_seconds = self.trend_window_minutes * 60
         self.estimates: dict[str, ClubEstimate] = {}
         self.densities: dict[str, DensityReading] = {}
+        self.trends: dict[str, TrendReading] = {}
+        self._trend_samples: dict[str, list[TrendSample]] = {}
         self.profiles: dict[str, ClubProfile] = {}
         self._timezones: dict[str, tzinfo] = {}
         self._warned_missing_profiles = False
@@ -277,6 +297,10 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
         for key in list(self.densities):
             if key not in data:
                 del self.densities[key]
+        for key in list(self.trends):
+            if key not in data:
+                del self.trends[key]
+                self._trend_samples.pop(key, None)
 
         for key, club in data.items():
             if club.occupancy is None:
@@ -286,6 +310,7 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
             estimate = estimate_occupancy(club.occupancy, self.reduction_percent)
             self.estimates[key] = estimate
             self._update_density(key, estimate)
+            self._update_trend(key, estimate)
 
         return data
 
@@ -296,6 +321,27 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
         busy, crowded = self.thresholds(key)
         self.densities[key] = measure_density(
             estimate.estimated_occupancy, profile.area_sqm, busy, crowded
+        )
+
+    def _update_trend(self, key: str, estimate: ClubEstimate) -> None:
+        """Record this poll's estimate and re-fit the club's trend line.
+
+        Samples are stamped with a monotonic clock because only the intervals
+        between them matter, and wall time can step under NTP or DST. History
+        lives in memory only, so a restart starts the window over and the
+        trend is unknown until it refills.
+        """
+        now = time.monotonic()
+        samples = self._trend_samples.get(key, [])
+        samples.append(TrendSample(at=now, people=estimate.estimated_occupancy))
+        samples = within_window(samples, now, self.trend_window_seconds)
+        self._trend_samples[key] = samples
+
+        previous = self.trends.get(key)
+        self.trends[key] = (
+            measure_trend(samples, TREND_MIN_GRADIENT, previous.direction)
+            if previous is not None
+            else measure_trend(samples, TREND_MIN_GRADIENT)
         )
 
     def _log_missing_profiles(self, data: dict[str, Club]) -> None:

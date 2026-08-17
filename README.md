@@ -6,6 +6,7 @@ A Home Assistant custom integration that exposes several sensors helpful for tho
  - Busyness Sensor - Uses the clubs square-meterage to determine how crowded the club feels compared to just a single occupancy number.
  - Staffing Status Sensor - Informs you if staff are present within the club or not. This is necessary for black card holders who want to know when they will be able to access the spa.
  - Next Staff Status Change Sensor - A timestamp of when staff next arrive or leave, so you can trigger an automation or alarm directly off it.
+ - Occupancy Trend Sensor - Whether the club is currently filling up or emptying out.
 
 <img src="https://raw.githubusercontent.com/dancmorgan/pfau-occupancy-ha/main/docs/integrationsplash.png" width="900">
 
@@ -23,7 +24,7 @@ Settings → Devices & Services → Add Integration → "Planet Fitness AU Occup
 
 The integration will ask you for names and locations for all clubs (represented as devices) - this step can simply be skipped without issue.
 
-Once set up, the integration's Options (a menu, reached the same way) let you tune the polling interval (default 5 minutes), the occupancy reduction percentage, and the busy/crowded thresholds - either generally or overridden for one specific club - all described below. Floor area and hours are not configurable there.
+Once set up, the integration's Options (a menu, reached the same way) let you tune the polling interval (default 5 minutes), the occupancy reduction percentage, the busy/crowded thresholds - either generally or overridden for one specific club - and the Occupancy Trend window (default 45 minutes) - all described below. Floor area and hours are not configurable there.
 
 <img src="https://raw.githubusercontent.com/dancmorgan/pfau-occupancy-ha/main/docs/integrationoptions.png" width="400">
 
@@ -33,7 +34,7 @@ Once set up, the integration's Options (a menu, reached the same way) let you tu
 
 # What you get
 
-Each discovered club is its own Device (Settings → Devices & Services → Planet Fitness AU Occupancy), grouping its eight sensors under one card instead of a flat entity list. Since a device is created per club, first setup (or any time a new club appears) prompts Home Assistant's usual "N new devices found" review - worth it for the grouping.
+Each discovered club is its own Device (Settings → Devices & Services → Planet Fitness AU Occupancy), grouping its nine entities under one card instead of a flat entity list. Since a device is created per club, first setup (or any time a new club appears) prompts Home Assistant's usual "N new devices found" review - worth it for the grouping.
 
 Per club:
 ## Sensors
@@ -44,6 +45,7 @@ Per club:
 | Busyness | category | human friendly category displaying "how the gym feels" (eg. Quiet, Busy, and Crowded) based on density configurations measured against 36m2 square (6x6 meters around you). Defaults are Quiet = less than 1.8 people, Busy more than 1.8 people, Crowded more than 2.5 people. |
 | Staffing Status | boolean | provides an indication as to whether staff are in the gym or not. This is specifically important if you have a query or if you are a black card member who wishes to use the spa. |
 | Next Staff Status Change | timestamp | describes the timestamp when staff will either arrive or leave. Set an automation 30 minutes before it to catch the last of the black card spa amenities before staff leave (useful on weekends, when they tend to leave earlier). |
+| Occupancy Trend | boolean | reads "Getting Busier" or "Getting Quieter" depending on which way Real Occupancy is heading. |
 ## Diagnostic
 | Entity | Type | Notes |
 | --- | --- | --- |
@@ -53,7 +55,7 @@ Per club:
 
 Clubs are discovered automatically on each poll; a club that disappears from a response (e.g. renamed) goes `unavailable` rather than being deleted, since the API exposes no stable club ID other than the (slugified) name.
 
-## Busyness and Density
+## Busyness, Density, and Trend
 
 Busyness provides a more useful metric than Real or Reported Occupancy as it divides **Real Occupancy** by `area_sqm` and bands the result to give you a more useful "does the gym feel busy right now" category. Density rather than occupancy is what makes clubs comparable - 60 people in a 1,600 m²
 warehouse is quiet, the same 60 in a 400 m² studio is extremely busy.
@@ -63,6 +65,8 @@ Before dividing, 33% of `area_sqm` is subtracted as dead space - walkways, corri
 36 square metres - a 6x6 metre square - has been chosen as the "people per" metric to calculate density as it allows a user to mentally picture that box around them during a workout and decide their own threshold for how many people within it they consider too much.
 
 Since these categories are subjective, they're fully user-configurable: set them generally in the integration's Options, or override just one club (Options → "Override a club's threshold") if it consistently feels busier or quieter than the general setting suggests. Leave both fields blank on that per-club form to remove the override again.
+
+Trend indicates if the gym is actively filling or emptying so you know whether or not its going to be better or worse by the time you get there. There is some smoothing and deadening to ensure it does not flap. Works off any change greater than 2 of the Real Occupancy sensor over a period of 45 minutes (window and deadening configurable in settings). Defaults to "Getting Busier" on reboot or state loss.
 
 ## Club List
 
