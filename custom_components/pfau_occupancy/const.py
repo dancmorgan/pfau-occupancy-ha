@@ -11,8 +11,8 @@ DEFAULT_REDUCTION_PERCENT = 50
 # Crowding thresholds in people per 36 square metres (a 6m by 6m square) of usable gym floor, applied to the estimated real occupancy. This is a subjective, personal-feel setting rather than a fact about a club, so unlike area_sqm/hours it's user-configurable — globally here, and per club via CONF_CLUB_THRESHOLDS below.
 CONF_BUSY_THRESHOLD = "busy_threshold"
 CONF_CROWDED_THRESHOLD = "crowded_threshold"
-DEFAULT_BUSY_THRESHOLD = 1.5
-DEFAULT_CROWDED_THRESHOLD = 2.0
+DEFAULT_BUSY_THRESHOLD = 1.6
+DEFAULT_CROWDED_THRESHOLD = 2.2
 
 # Occupancy Trend fits a line through the real-occupancy samples collected over a rolling window and reports its gradient's direction. A short window reacts quickly but is noisier; a long one is steadier but lags. Subjective enough to be worth exposing, so it's in the options flow. Whatever the user picks is still widened when polling is slower than it, so the fit always has a few samples to work with (see coordinator.trend_window_seconds).
 CONF_TREND_WINDOW_MINUTES = "trend_window_minutes"
