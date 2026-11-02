@@ -7,7 +7,11 @@
 # imports POSIX-only modules. It also needs a Python version Home Assistant
 # supports; see `requires-python` in the homeassistant package.
 pytest-homeassistant-custom-component
-pfau-occupancy
+
+# The new-portal client is not on PyPI yet: the published 0.1.x talks to the old
+# portal, so these tests fail against it. Install it from its dev branch, and
+# switch back to `pfau-occupancy>=0.2.0` once 0.2.0 is published.
+pfau-occupancy @ git+https://github.com/dancmorgan/pfau-occupancy@dev
 
 # Without the line above, the Home-Assistant-free unit tests still run anywhere
 # with just: pytest, PyYAML, tzdata  (`pytest tests/` skips the test_ha_*.py
