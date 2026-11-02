@@ -70,7 +70,7 @@ def load_club_profiles(path: Path) -> dict[str, ClubProfile]:
 
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError as err:
+    except (OSError, UnicodeDecodeError) as err:
         raise ClubDataError(f"Could not read {path.name}: {err}") from err
 
     return parse_club_data(text, path.name)

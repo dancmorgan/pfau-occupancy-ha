@@ -1,7 +1,16 @@
-# Enough to run the Home-Assistant-free unit tests: `pytest tests/`.
-# PyYAML and tzdata are Home Assistant core dependencies, so they're always
-# present at runtime; they're listed here only for a bare test environment.
-# (tzdata is what gives zoneinfo an IANA database on Windows, which has none.)
-pytest
-PyYAML
-tzdata
+# Full suite, including the Home Assistant integration tests (test_ha_*.py):
+#
+#     pip install -r tests/requirements.txt
+#     pytest --cov=custom_components/pfau_occupancy
+#
+# Needs Linux or macOS (on Windows, use WSL): Home Assistant's test harness
+# imports POSIX-only modules. It also needs a Python version Home Assistant
+# supports; see `requires-python` in the homeassistant package.
+pytest-homeassistant-custom-component
+pfau-occupancy
+
+# Without the line above, the Home-Assistant-free unit tests still run anywhere
+# with just: pytest, PyYAML, tzdata  (`pytest tests/` skips the test_ha_*.py
+# files itself). PyYAML and tzdata are Home Assistant core dependencies, so
+# they're always present at runtime; tzdata is what gives zoneinfo an IANA
+# database on Windows, which has none.

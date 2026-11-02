@@ -1,13 +1,13 @@
 """Shared base for every per-club entity, whatever platform it's on."""
 from __future__ import annotations
 
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from pfau_occupancy import Club
 
 from .club_data import ClubProfile
-from .const import DOMAIN
+from .const import DOMAIN, MEMBER_PORTAL_URL
 from .coordinator import PlanetFitnessCoordinator
 
 
@@ -35,6 +35,8 @@ class PlanetFitnessClubEntity(CoordinatorEntity[PlanetFitnessCoordinator]):
             identifiers={(DOMAIN, club_key)},
             name=coordinator.data[club_key].name.title(),
             manufacturer="Planet Fitness Australia",
+            model="Club",
+            configuration_url=MEMBER_PORTAL_URL,
         )
 
     @property

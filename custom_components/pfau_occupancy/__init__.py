@@ -5,7 +5,9 @@ import logging
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.device_registry import DeviceEntry
 
+from .const import DOMAIN
 from .coordinator import PlanetFitnessConfigEntry, PlanetFitnessCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -60,6 +62,22 @@ def _async_remove_retired_entities(hass: HomeAssistant, entry: PlanetFitnessConf
 async def async_unload_entry(hass: HomeAssistant, entry: PlanetFitnessConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: PlanetFitnessConfigEntry, device_entry: DeviceEntry
+) -> bool:
+    """Let the user delete a club's device once the portal no longer lists it.
+
+    A club can drop out of a poll temporarily, so devices are never removed
+    automatically; this only permits a manual removal for clubs that are absent
+    from the latest data.
+    """
+    current = entry.runtime_data.data
+    return not any(
+        domain == DOMAIN and club_key in current
+        for domain, club_key in device_entry.identifiers
+    )
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: PlanetFitnessConfigEntry) -> None:

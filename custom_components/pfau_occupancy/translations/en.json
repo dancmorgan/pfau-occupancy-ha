@@ -69,6 +69,7 @@
   "entity": {
     "sensor": {
       "staffing": {
+        "name": "Staffing Status",
         "state": {
           "staffed": "Staffed",
           "unstaffed": "Unstaffed",
@@ -76,20 +77,48 @@
         }
       },
       "busyness": {
+        "name": "Busyness",
         "state": {
           "quiet": "Quiet",
           "busy": "Busy",
           "crowded": "Crowded"
         }
+      },
+      "reported_occupancy": {
+        "name": "Reported Occupancy"
+      },
+      "real_occupancy": {
+        "name": "Real Occupancy"
+      },
+      "next_staffing_change": {
+        "name": "Next Staff Status Change"
+      },
+      "floor_area": {
+        "name": "Floor Area"
+      },
+      "busy_threshold": {
+        "name": "Busy Threshold"
+      },
+      "crowded_threshold": {
+        "name": "Crowded Threshold"
       }
     },
     "binary_sensor": {
       "occupancy_trend": {
+        "name": "Occupancy Trend",
         "state": {
           "on": "Getting Busier",
           "off": "Getting Quieter"
         }
       }
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Could not reach the Planet Fitness portal: {error}"
+    },
+    "invalid_auth": {
+      "message": "The Planet Fitness portal rejected the credentials: {error}"
     }
   }
 }

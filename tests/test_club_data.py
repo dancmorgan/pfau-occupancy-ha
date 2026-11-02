@@ -31,6 +31,27 @@ def test_shipped_file_parses() -> None:
     load_club_profiles(SHIPPED_FILE)
 
 
+@pytest.mark.parametrize(
+    ("key", "area", "timezone"),
+    [
+        ("bundaberg", 1654, "Australia/Brisbane"),
+        ("maroochydore", 1801, "Australia/Brisbane"),
+        ("parafield", 1517, "Australia/Adelaide"),
+        ("sunshine_north", 1903, "Australia/Melbourne"),
+        ("fountain_gate", 1600, "Australia/Melbourne"),
+        ("noarlunga", 2000, "Australia/Adelaide"),
+    ],
+)
+def test_shipped_file_has_the_areas_supplied_since_the_new_portal(
+    key: str, area: int, timezone: str
+) -> None:
+    profile = load_club_profiles(SHIPPED_FILE)[key]
+
+    assert profile.area_sqm == area
+    assert profile.timezone == timezone
+    assert profile.schedule is not None
+
+
 def test_missing_file_is_not_an_error(tmp_path: Path) -> None:
     assert load_club_profiles(tmp_path / "nope.yaml") == {}
 
@@ -122,3 +143,23 @@ def test_parse_club_data_matches_load_club_profiles(tmp_path: Path) -> None:
 def test_parse_club_data_error_names_its_source() -> None:
     with pytest.raises(ClubDataError, match="my-source"):
         parse_club_data("clubs:\n  a_club:\n    area_sqm: -1\n", "my-source")
+
+
+def test_unreadable_file_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = write(tmp_path, "clubs: {}")
+
+    def refuse(*args: object, **kwargs: object) -> str:
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(Path, "read_text", refuse)
+    with pytest.raises(ClubDataError, match="Could not read"):
+        load_club_profiles(path)
+
+
+def test_file_that_cannot_be_decoded_is_reported(tmp_path: Path) -> None:
+    path = tmp_path / "clubs.yaml"
+    path.write_bytes(bytes([0xFF, 0xFE, 0x00]) + b"bad")
+    with pytest.raises(ClubDataError, match="Could not read"):
+        load_club_profiles(path)
