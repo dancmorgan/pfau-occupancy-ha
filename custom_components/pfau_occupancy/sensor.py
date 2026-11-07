@@ -8,7 +8,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import EntityCategory
+from homeassistant.const import EntityCategory, UnitOfArea
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_point_in_time
@@ -19,6 +19,10 @@ from .density import Busyness, DensityReading, effective_area
 from .entity import PlanetFitnessClubEntity
 from .estimator import ClubEstimate
 from .hours import ClubSchedule, Staffing
+
+# Entities never talk to the portal themselves; the coordinator does, so
+# there is nothing to throttle (quality scale rule parallel-updates).
+PARALLEL_UPDATES = 0
 
 # Fire a moment after a staffing boundary rather than exactly on it, so a
 # timer that runs a hair early doesn't re-read the state it just left.
@@ -76,7 +80,6 @@ class PlanetFitnessOccupancySensorBase(PlanetFitnessClubSensorBase):
 
     _attr_native_unit_of_measurement = "people"
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_icon = "mdi:account-group"
 
 
 class PlanetFitnessReportedSensor(PlanetFitnessOccupancySensorBase):
@@ -86,7 +89,7 @@ class PlanetFitnessReportedSensor(PlanetFitnessOccupancySensorBase):
     a fixed timer (the counter window), so this is a trailing sum of arrivals.
     """
 
-    _attr_name = "Reported Occupancy"
+    _attr_translation_key = "reported_occupancy"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
@@ -116,7 +119,7 @@ class PlanetFitnessRealSensor(PlanetFitnessOccupancySensorBase):
     reported count (see estimator.py for why).
     """
 
-    _attr_name = "Real Occupancy"
+    _attr_translation_key = "real_occupancy"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
@@ -233,8 +236,6 @@ class PlanetFitnessStaffingSensor(PlanetFitnessScheduleSensorBase):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = [state.value for state in Staffing]
     _attr_translation_key = "staffing"
-    _attr_icon = "mdi:clock-outline"
-    _attr_name = "Staffing Status"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
@@ -279,8 +280,7 @@ class PlanetFitnessNextStaffingChangeSensor(PlanetFitnessScheduleSensorBase):
     """
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _attr_icon = "mdi:clock-alert-outline"
-    _attr_name = "Next Staff Status Change"
+    _attr_translation_key = "next_staffing_change"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
@@ -303,10 +303,11 @@ class PlanetFitnessFloorAreaSensor(PlanetFitnessClubSensorBase):
     visible and templatable, not to be graphed.
     """
 
-    _attr_native_unit_of_measurement = "m²"
+    _attr_entity_registry_enabled_default = False
+    _attr_device_class = SensorDeviceClass.AREA
+    _attr_native_unit_of_measurement = UnitOfArea.SQUARE_METERS
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:floor-plan"
-    _attr_name = "Floor Area"
+    _attr_translation_key = "floor_area"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
@@ -329,14 +330,12 @@ class PlanetFitnessFloorAreaSensor(PlanetFitnessClubSensorBase):
 class PlanetFitnessBusynessSensor(PlanetFitnessClubSensorBase):
     """How crowded the club is: quiet, busy, or crowded. Different from occupancy and based on people per square meter as an extremely large club may hold 150 people but still be quiet, whereas a small club may have 20 people but feel shoulder to shoulder.
 
-    Estimated real occupancy per 36 square metres of effective floor area (a 6x6 metre square around you after dead space subtracted — see density.py), banded by the thresholds from the integration options (globally, or overridden for this club — see coordinator.thresholds). Needs an `area_sqm` for the club, so it stays unavailable until one is set.
+    Estimated real occupancy per 36 square metres of effective floor area (a 6x6 metre square around you after dead space subtracted — see density.py), banded by the thresholds from the integration options (globally, or overridden for this club — see coordinator.thresholds). A club with no `area_sqm` is measured against a placeholder area until one is set (see coordinator.area_sqm), flagged by the `area_is_placeholder` attribute.
     """
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = [band.value for band in Busyness]
     _attr_translation_key = "busyness"
-    _attr_icon = "mdi:gauge"
-    _attr_name = "Busyness"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
@@ -366,6 +365,9 @@ class PlanetFitnessBusynessSensor(PlanetFitnessClubSensorBase):
             "sqm_per_person": density.sqm_per_person,
             "people": density.people,
             "area_sqm": density.area_sqm,
+            "area_is_placeholder": self.coordinator.area_is_placeholder(
+                self._club_key
+            ),
             "effective_area_sqm": density.effective_area_sqm,
             "busy_threshold": busy,
             "crowded_threshold": crowded,
@@ -373,11 +375,9 @@ class PlanetFitnessBusynessSensor(PlanetFitnessClubSensorBase):
         # The same thresholds as headcounts, which is what the bands actually
         # mean at this club. Also their own diagnostic sensors, but repeated
         # here so the band you're looking at explains itself.
-        headcounts = self.coordinator.headcount_thresholds(self._club_key)
-        if headcounts is not None:
-            busy_at, crowded_at = headcounts
-            attributes["busy_at_people"] = busy_at
-            attributes["crowded_at_people"] = crowded_at
+        busy_at, crowded_at = self.coordinator.headcount_thresholds(self._club_key)
+        attributes["busy_at_people"] = busy_at
+        attributes["crowded_at_people"] = crowded_at
         return attributes
 
 
@@ -397,7 +397,7 @@ class PlanetFitnessBandThresholdSensor(PlanetFitnessClubSensorBase):
 
     _attr_native_unit_of_measurement = "people"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:account-multiple-check-outline"
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -408,32 +408,18 @@ class PlanetFitnessBandThresholdSensor(PlanetFitnessClubSensorBase):
         super().__init__(coordinator, club_key)
         self._band = band
         self._attr_unique_id = f"{club_key}_{band.value}_threshold"
-        self._attr_name = f"{band.value.title()} Threshold"
+        self._attr_translation_key = f"{band.value}_threshold"
 
     @property
-    def _headcounts(self) -> tuple[int, int] | None:
-        return self.coordinator.headcount_thresholds(self._club_key)
-
-    @property
-    def available(self) -> bool:
-        return super().available and self._headcounts is not None
-
-    @property
-    def native_value(self) -> int | None:
-        headcounts = self._headcounts
-        if headcounts is None:
-            return None
-        busy_at, crowded_at = headcounts
+    def native_value(self) -> int:
+        busy_at, crowded_at = self.coordinator.headcount_thresholds(self._club_key)
         return busy_at if self._band is Busyness.BUSY else crowded_at
 
     @property
     def extra_state_attributes(self) -> dict[str, object]:
-        headcounts = self._headcounts
-        profile = self._profile
-        if headcounts is None or profile is None or profile.area_sqm is None:
-            return {}
+        area = self.coordinator.area_sqm(self._club_key)
         busy, crowded = self.coordinator.thresholds(self._club_key)
-        busy_at, crowded_at = headcounts
+        busy_at, crowded_at = self.coordinator.headcount_thresholds(self._club_key)
         return {
             "band": self._band.value,
             # The density setting this headcount was resolved from, and the
@@ -441,8 +427,11 @@ class PlanetFitnessBandThresholdSensor(PlanetFitnessClubSensorBase):
             "people_per_36sqm_threshold": (
                 busy if self._band is Busyness.BUSY else crowded
             ),
-            "area_sqm": profile.area_sqm,
-            "effective_area_sqm": round(effective_area(profile.area_sqm), 1),
+            "area_sqm": area,
+            "area_is_placeholder": self.coordinator.area_is_placeholder(
+                self._club_key
+            ),
+            "effective_area_sqm": round(effective_area(area), 1),
             # The full picture, so either sensor answers "what do the bands
             # mean here?" without cross-referencing the other.
             "quiet_below_people": busy_at,

@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import voluptuous as vol
+import probatio
 
 from homeassistant.config_entries import (
     ConfigEntry,
@@ -19,6 +19,7 @@ from homeassistant.helpers.selector import (
     NumberSelectorConfig,
     NumberSelectorMode,
     SelectSelector,
+    SelectOptionDict,
     SelectSelectorConfig,
     SelectSelectorMode,
 )
@@ -47,10 +48,10 @@ CONF_CLUB = "club"
 
 _LOGGER = logging.getLogger(__name__)
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
+STEP_USER_DATA_SCHEMA = probatio.Schema(
     {
-        vol.Required(CONF_EMAIL): str,
-        vol.Required(CONF_PASSWORD): str,
+        probatio.Required(CONF_EMAIL): str,
+        probatio.Required(CONF_PASSWORD): str,
     }
 )
 
@@ -141,19 +142,19 @@ class PlanetFitnessConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
+            data_schema=probatio.Schema({probatio.Required(CONF_PASSWORD): str}),
             errors=errors,
             description_placeholders={"email": self._reauth_entry.data[CONF_EMAIL]},
         )
 
 
-def _minutes_box(min_value: int, max_value: int) -> vol.All:
+def _minutes_box(min_value: int, max_value: int) -> probatio.All[int]:
     """A plain number-box selector for a minutes field.
 
     Required + BOX mode so the frontend renders neither an enable checkbox
     nor a slider.
     """
-    return vol.All(
+    return probatio.All(
         NumberSelector(
             NumberSelectorConfig(
                 min=min_value,
@@ -163,13 +164,13 @@ def _minutes_box(min_value: int, max_value: int) -> vol.All:
                 unit_of_measurement="minutes",
             )
         ),
-        vol.Coerce(int),
+        probatio.Coerce(int),
     )
 
 
-def _percent_box(min_value: int, max_value: int) -> vol.All:
+def _percent_box(min_value: int, max_value: int) -> probatio.All[int]:
     """A plain number-box selector for a percentage field."""
-    return vol.All(
+    return probatio.All(
         NumberSelector(
             NumberSelectorConfig(
                 min=min_value,
@@ -179,17 +180,17 @@ def _percent_box(min_value: int, max_value: int) -> vol.All:
                 unit_of_measurement="%",
             )
         ),
-        vol.Coerce(int),
+        probatio.Coerce(int),
     )
 
 
-def _density_box() -> vol.All:
+def _density_box() -> probatio.All[float]:
     """A number-box selector for a people-per-36-square-metre threshold.
 
     Fine steps because the useful range is small: one person per 20 m2 is
     1.8, one per 10 m2 is 3.6.
     """
-    return vol.All(
+    return probatio.All(
         NumberSelector(
             NumberSelectorConfig(
                 min=0.01,
@@ -199,7 +200,7 @@ def _density_box() -> vol.All:
                 unit_of_measurement="people/36m²",
             )
         ),
-        vol.Coerce(float),
+        probatio.Coerce(float),
     )
 
 
@@ -242,31 +243,31 @@ class PlanetFitnessOptionsFlow(OptionsFlow):
                 )
 
         options = self.config_entry.options
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Required(
+                probatio.Required(
                     CONF_SCAN_INTERVAL,
                     default=options.get(
                         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_MINUTES
                     ),
                 ): _minutes_box(1, 60),
-                vol.Required(
+                probatio.Required(
                     CONF_REDUCTION_PERCENT,
                     default=options.get(
                         CONF_REDUCTION_PERCENT, DEFAULT_REDUCTION_PERCENT
                     ),
                 ): _percent_box(0, 90),
-                vol.Required(
+                probatio.Required(
                     CONF_BUSY_THRESHOLD,
                     default=options.get(CONF_BUSY_THRESHOLD, DEFAULT_BUSY_THRESHOLD),
                 ): _density_box(),
-                vol.Required(
+                probatio.Required(
                     CONF_CROWDED_THRESHOLD,
                     default=options.get(
                         CONF_CROWDED_THRESHOLD, DEFAULT_CROWDED_THRESHOLD
                     ),
                 ): _density_box(),
-                vol.Required(
+                probatio.Required(
                     CONF_TREND_WINDOW_MINUTES,
                     default=options.get(
                         CONF_TREND_WINDOW_MINUTES, DEFAULT_TREND_WINDOW_MINUTES
@@ -293,13 +294,13 @@ class PlanetFitnessOptionsFlow(OptionsFlow):
             self._club_key = user_input[CONF_CLUB]
             return await self.async_step_club_threshold_values()
 
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Required(CONF_CLUB): SelectSelector(
+                probatio.Required(CONF_CLUB): SelectSelector(
                     SelectSelectorConfig(
                         mode=SelectSelectorMode.DROPDOWN,
                         options=[
-                            {"value": key, "label": club.name.title()}
+                            SelectOptionDict(value=key, label=club.name.title())
                             for key, club in sorted(
                                 clubs.items(), key=lambda item: item[1].name
                             )
@@ -352,10 +353,10 @@ class PlanetFitnessOptionsFlow(OptionsFlow):
 
         # No `default=` here: an Optional field with a default is never
         # actually absent, which would break "leave both blank to clear".
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Optional(CONF_BUSY_THRESHOLD): _density_box(),
-                vol.Optional(CONF_CROWDED_THRESHOLD): _density_box(),
+                probatio.Optional(CONF_BUSY_THRESHOLD): _density_box(),
+                probatio.Optional(CONF_CROWDED_THRESHOLD): _density_box(),
             }
         )
         # Re-show what was just (invalidly) submitted on error, same as the

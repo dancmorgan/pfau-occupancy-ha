@@ -40,17 +40,20 @@ from .const import (
     CONF_CROWDED_THRESHOLD,
     CONF_REDUCTION_PERCENT,
     CONF_TREND_WINDOW_MINUTES,
+    DEFAULT_AREA_SQM,
     DEFAULT_BUSY_THRESHOLD,
     DEFAULT_CROWDED_THRESHOLD,
     DEFAULT_REDUCTION_PERCENT,
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DEFAULT_TREND_WINDOW_MINUTES,
     DOMAIN,
+    FETCH_RETRY_DELAYS,
     TREND_MIN_GRADIENT,
     TREND_MIN_SAMPLES_IN_WINDOW,
 )
 from .density import DensityReading, measure_density, people_at_threshold
 from .estimator import ClubEstimate, estimate_occupancy
+from .retry import retry_on
 from .trend import TrendReading, TrendSample, measure_trend, within_window
 
 _LOGGER = logging.getLogger(__name__)
@@ -178,7 +181,8 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
         except ClubDataError as err:
             _LOGGER.error(
                 "Ignoring bundled club data: %s. Floor area and staffed hours "
-                "will be unavailable until this is corrected",
+                "will be unavailable, and Busyness will use a placeholder floor "
+                "area, until this is corrected",
                 err,
             )
             return {}
@@ -212,7 +216,7 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
             return None
         try:
             return await self.hass.async_add_executor_job(path.read_text, "utf-8")
-        except OSError as err:
+        except (OSError, UnicodeDecodeError) as err:
             _LOGGER.debug("Could not read cached club data at %s: %s", path, err)
             return None
 
@@ -261,30 +265,60 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
         crowded = override[CONF_CROWDED_THRESHOLD]
         return busy, max(busy, crowded)
 
-    def headcount_thresholds(self, club_key: str) -> tuple[int, int] | None:
-        """This club's (busy, crowded) thresholds as headcounts, not densities.
+    def area_sqm(self, club_key: str) -> float:
+        """The floor area to measure this club's density against.
 
-        None for a club with no floor area, since people/36m2 can't be turned
-        back into people without one. Ordered, because thresholds() is.
+        The club's own figure from clubs.yaml, or DEFAULT_AREA_SQM until one
+        is added.
         """
         profile = self.profiles.get(club_key)
         if profile is None or profile.area_sqm is None:
-            return None
+            return DEFAULT_AREA_SQM
+        return profile.area_sqm
+
+    def area_is_placeholder(self, club_key: str) -> bool:
+        """Whether area_sqm() is the stand-in rather than the club's own figure."""
+        profile = self.profiles.get(club_key)
+        return profile is None or profile.area_sqm is None
+
+    def headcount_thresholds(self, club_key: str) -> tuple[int, int]:
+        """This club's (busy, crowded) thresholds as headcounts, not densities.
+
+        Ordered, because thresholds() is.
+        """
+        area = self.area_sqm(club_key)
         busy, crowded = self.thresholds(club_key)
-        return (
-            people_at_threshold(profile.area_sqm, busy),
-            people_at_threshold(profile.area_sqm, crowded),
+        return people_at_threshold(area, busy), people_at_threshold(area, crowded)
+
+    async def _async_get_clubs_with_retry(self) -> list[Club]:
+        """Fetch clubs, retrying connection failures after short delays.
+
+        Auth errors propagate immediately. If every attempt fails the last
+        connection error is raised, so entities go unavailable as HA requires.
+        """
+        return await retry_on(
+            self.client.async_get_clubs,
+            PlanetFitnessConnectionError,
+            FETCH_RETRY_DELAYS,
         )
 
     async def _async_update_data(self) -> dict[str, Club]:
         try:
-            clubs = await self.client.async_get_clubs()
+            clubs = await self._async_get_clubs_with_retry()
         except PlanetFitnessAuthError as err:
             _LOGGER.debug("Update failed with auth error: %s", err)
-            raise ConfigEntryAuthFailed(str(err)) from err
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="invalid_auth",
+                translation_placeholders={"error": str(err)},
+            ) from err
         except PlanetFitnessConnectionError as err:
             _LOGGER.debug("Update failed with connection error: %s", err)
-            raise UpdateFailed(str(err)) from err
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="cannot_connect",
+                translation_placeholders={"error": str(err)},
+            ) from err
         _LOGGER.debug("Update fetched %d clubs", len(clubs))
 
         data = {club.key: club for club in clubs}
@@ -315,12 +349,9 @@ class PlanetFitnessCoordinator(DataUpdateCoordinator[dict[str, Club]]):
         return data
 
     def _update_density(self, key: str, estimate: ClubEstimate) -> None:
-        profile = self.profiles.get(key)
-        if profile is None or profile.area_sqm is None:
-            return
         busy, crowded = self.thresholds(key)
         self.densities[key] = measure_density(
-            estimate.estimated_occupancy, profile.area_sqm, busy, crowded
+            estimate.estimated_occupancy, self.area_sqm(key), busy, crowded
         )
 
     def _update_trend(self, key: str, estimate: ClubEstimate) -> None:

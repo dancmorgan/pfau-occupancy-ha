@@ -1,0 +1,39 @@
+{
+  "entity": {
+    "sensor": {
+      "reported_occupancy": {
+        "default": "mdi:account-group"
+      },
+      "real_occupancy": {
+        "default": "mdi:account-group"
+      },
+      "staffing": {
+        "default": "mdi:clock-outline"
+      },
+      "next_staffing_change": {
+        "default": "mdi:clock-alert-outline"
+      },
+      "floor_area": {
+        "default": "mdi:floor-plan"
+      },
+      "busyness": {
+        "default": "mdi:gauge"
+      },
+      "busy_threshold": {
+        "default": "mdi:account-multiple-check-outline"
+      },
+      "crowded_threshold": {
+        "default": "mdi:account-multiple-check-outline"
+      }
+    },
+    "binary_sensor": {
+      "occupancy_trend": {
+        "default": "mdi:trending-down",
+        "state": {
+          "on": "mdi:trending-up",
+          "off": "mdi:trending-down"
+        }
+      }
+    }
+  }
+}

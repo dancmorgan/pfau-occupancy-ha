@@ -10,6 +10,10 @@ from .coordinator import PlanetFitnessConfigEntry, PlanetFitnessCoordinator
 from .entity import PlanetFitnessClubEntity
 from .trend import DEFAULT_TREND, Trend, TrendReading
 
+# Entities never talk to the portal themselves; the coordinator does, so
+# there is nothing to throttle (quality scale rule parallel-updates).
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -54,7 +58,6 @@ class PlanetFitnessOccupancyTrendSensor(PlanetFitnessClubEntity, BinarySensorEnt
     """
 
     _attr_translation_key = "occupancy_trend"
-    _attr_name = "Occupancy Trend"
 
     def __init__(self, coordinator: PlanetFitnessCoordinator, club_key: str) -> None:
         super().__init__(coordinator, club_key)
@@ -73,10 +76,6 @@ class PlanetFitnessOccupancyTrendSensor(PlanetFitnessClubEntity, BinarySensorEnt
     @property
     def is_on(self) -> bool:
         return self._direction is Trend.RISING
-
-    @property
-    def icon(self) -> str:
-        return "mdi:trending-up" if self.is_on else "mdi:trending-down"
 
     @property
     def extra_state_attributes(self) -> dict[str, object]:
